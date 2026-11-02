@@ -8,6 +8,8 @@
   force_handlers: true
   any_errors_fatal: false
   serial: "{{ harden_serial | default('100%') }}"
+  vars_files:
+    - "profiles/{{ harden_profile | default('baseline', true) }}.yml"
   pre_tasks:
     - name: Assert supported platform
       ansible.builtin.assert:

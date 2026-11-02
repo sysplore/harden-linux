@@ -28,6 +28,7 @@ This is the simple path. In Semaphore:
 2. Fill the form:
    - **Server IP or hostname**
    - **Distribution**: Debian or Ubuntu
+   - **Hardening profile**: Baseline, NIST 800-53, BSI Grundschutz or Strict
    - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
    - **SSH password**
    - **Sudo password**: leave blank to reuse the SSH password

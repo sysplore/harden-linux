@@ -447,6 +447,19 @@ def main() -> int:
             ],
         },
         {
+            "name": "harden_profile",
+            "title": "Hardening profile",
+            "description": "Leave blank for baseline.",
+            "type": "enum",
+            "required": False,
+            "values": [
+                {"name": "Baseline", "value": "baseline"},
+                {"name": "NIST 800-53", "value": "nist-800-53"},
+                {"name": "BSI Grundschutz", "value": "bsi-grundschutz"},
+                {"name": "Strict", "value": "strict"},
+            ],
+        },
+        {
             "name": "target_user",
             "title": "SSH user",
             "description": "Leave blank for ubuntu on Ubuntu, root on Debian.",
