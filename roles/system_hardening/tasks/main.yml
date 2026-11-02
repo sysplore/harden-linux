@@ -1,0 +1,134 @@
+---
+- name: Apply kernel and network sysctl hardening
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-hardening.conf
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ sysctl_settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Harden login.defs
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: "^{{ item.key }}\\s"
+    line: "{{ item.key }} {{ item.value }}"
+    state: present
+    backup: true
+  loop:
+    - { key: UMASK, value: "{{ umask_value }}" }
+    - { key: PASS_MAX_DAYS, value: "{{ login_defs_pass_max_days }}" }
+    - { key: PASS_MIN_DAYS, value: "{{ login_defs_pass_min_days }}" }
+    - { key: PASS_WARN_AGE, value: "{{ login_defs_pass_warn_age }}" }
+    - { key: HOME_MODE, value: "0750" }
+    - { key: USERGROUPS_ENAB, value: "yes" }
+    - { key: ENCRYPT_METHOD, value: "{{ 'YESCRYPT' if pam_yescrypt | default(true) | bool else 'SHA512' }}" }
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Set the yescrypt cost factor
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: '^YESCRYPT_COST_FACTOR\s'
+    line: 'YESCRYPT_COST_FACTOR 11'
+    state: present
+    backup: true
+  when: pam_yescrypt | default(true) | bool
+
+- name: Set SHA512 crypt rounds
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: '^SHA_CRYPT_MIN_ROUNDS\s'
+    line: 'SHA_CRYPT_MIN_ROUNDS 65536'
+    state: present
+    backup: true
+  when: not (pam_yescrypt | default(true) | bool)
+
+- name: Set the default umask
+  ansible.builtin.copy:
+    dest: /etc/profile.d/99-umask.sh
+    content: |
+      # Managed by Ansible
+      umask {{ umask_value }}
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Set process limits
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-hardening.conf
+    content: |
+      * hard core 0
+      * soft core 0
+      * hard maxlogins 10
+      * soft nofile 1024
+      * hard nofile 65535
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Blacklist unused filesystems and protocols
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/99-hardening.conf
+    content: |
+      {% for module in kernel_modules_blacklist %}
+      install {{ module }} /bin/false
+      {% endfor %}
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Harden /tmp
+  ansible.posix.mount:
+    path: /tmp
+    src: /tmp
+    fstype: none
+    opts: bind,nodev,nosuid,noexec
+    state: mounted
+  when: mount_tmp_hardening | bool
+
+- name: Harden /var/tmp
+  ansible.posix.mount:
+    path: /var/tmp
+    src: /var/tmp
+    fstype: none
+    opts: bind,nodev,nosuid,noexec
+    state: mounted
+  when: mount_var_tmp_hardening | bool
+
+- name: Harden /dev/shm
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: defaults,nodev,nosuid,noexec
+    state: mounted
+  when: mount_dev_shm_hardening | bool
+
+- name: Harden /home
+  ansible.posix.mount:
+    path: /home
+    src: /home
+    fstype: none
+    opts: bind,nodev,nosuid
+    state: mounted
+  when: mount_home_hardening | bool
+
+- name: Create the proc group for hidepid
+  ansible.builtin.group:
+    name: proc
+    system: true
+    state: present
+  when: proc_hidepid | int > 0
+
+- name: Harden /proc with hidepid
+  ansible.posix.mount:
+    path: /proc
+    src: proc
+    fstype: proc
+    opts: "defaults,hidepid={{ proc_hidepid }},gid=proc"
+    state: mounted
+  when: proc_hidepid | int > 0

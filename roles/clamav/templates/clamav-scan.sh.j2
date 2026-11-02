@@ -1,0 +1,24 @@
+#!/bin/sh
+# {{ ansible_managed }}
+set -u
+
+LOG=/var/log/clamav/clamscan.log
+
+{
+  echo "=== ClamAV scan started: $(date -Is) ==="
+  nice -n 19 ionice -c3 /usr/bin/clamscan -r --infected --no-summary \
+    --max-filesize={{ clamav_max_filesize }} \
+    --max-scansize={{ clamav_max_scansize }} \
+{% for dir in clamav_exclude_dirs %}
+    --exclude-dir='^{{ dir }}' \
+{% endfor %}
+    {{ clamav_scan_paths | join(' ') }}
+  rc=$?
+  echo "=== ClamAV scan finished: $(date -Is) (exit $rc) ==="
+  if [ "$rc" -ne 0 ] && [ -x /usr/local/sbin/harden-notify ]; then
+    tail -n 200 "$LOG" | /usr/local/sbin/harden-notify \
+      --subject "ClamAV: infected files or scan error on $(hostname)" \
+      --stdin --skip-empty
+  fi
+  exit 0
+} >> "$LOG" 2>&1

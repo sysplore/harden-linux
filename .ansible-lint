@@ -1,0 +1,17 @@
+---
+profile: production
+exclude_paths:
+  - .cache/
+  - .git/
+  - collections/
+skip_list:
+  - yaml[line-length]
+  - name[casing]
+  - risky-file-permissions
+  - risky-shell-pipe
+  - command-instead-of-shell
+  - command-instead-of-module
+  - var-naming[no-role-prefix]
+  - no-changed-when
+warn_list:
+  - no-handler

@@ -1,7 +1,18 @@
-    - name: Requirements-Playbook
-      hosts: debian-server
-      remote_user: root
-      vars_files: ./group_vars/variables.yml
-
-      roles:
-        - requirements
+---
+- name: Bootstrap a Debian or Ubuntu server
+  hosts: linux
+  gather_facts: true
+  remote_user: "{{ bootstrap_user | default('root') }}"
+  become: "{{ (bootstrap_user | default('root')) != 'root' }}"
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Assert supported platform
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution in ['Debian', 'Ubuntu']
+          - (ansible_distribution != 'Debian') or (ansible_distribution_major_version | int >= 12)
+          - (ansible_distribution != 'Ubuntu') or (ansible_distribution_major_version | int >= 22)
+        fail_msg: "Supported platforms: Debian 12+ and Ubuntu 22.04+."
+  roles:
+    - role: requirements
+      tags: [requirements, bootstrap]

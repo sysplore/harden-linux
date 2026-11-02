@@ -1,31 +1,82 @@
-    - name: update and upgrade
-      become: true
-      apt:
-        update_cache: yes
-        upgrade: yes
+---
+- name: Enable the Ubuntu universe component
+  ansible.builtin.apt_repository:
+    repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+    state: present
+    filename: ubuntu-universe
+    update_cache: false
+  when:
+    - ansible_distribution == 'Ubuntu'
+    - ubuntu_enable_universe | default(true) | bool
 
-    - name: install packages
-      become: true
-      apt:
-        name: 
-          - apt-listchanges
-          - apt-transport-https
-          - apticron
-          - audispd-plugins
-          - auditd
-          - ca-certificates
-          - clamav
-          - clamav-daemon
-          - clamav-freshclam
-          - curl
-          - fail2ban
-          - host
-          - libpam-pwquality
-          - mailutils
-          - msmtp
-          - msmtp-mta
-          - psad
-          - rkhunter
-          - ufw
-          - unattended-upgrades
-        state: present
+- name: Build the package list from selected features
+  ansible.builtin.set_fact:
+    packages_selected: >-
+      {{ (packages_core
+          + (packages_mail if mail_enabled | bool else [])
+          + (packages_updates if harden_features.unattended_upgrades | default(true) | bool else [])
+          + (packages_ntp if harden_features.ntp | default(true) | bool else [])
+          + (packages_logging if harden_features.logging | default(true) | bool else [])
+          + (packages_firewall if harden_features.firewall | default(true) | bool else [])
+          + (packages_password if harden_features.password_policy | default(true) | bool else [])
+          + (packages_lynis if harden_features.lynis | default(true) | bool else [])
+          + (packages_clamav if harden_features.clamav | default(true) | bool else [])
+          + (packages_rkhunter if harden_features.rkhunter | default(true) | bool else [])
+          + (packages_auditd if harden_features.auditd | default(true) | bool else [])
+          + (packages_integrity if harden_features.integrity | default(true) | bool else [])
+          + (packages_mfa if ssh_mfa_enabled | bool else [])) | unique }}
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Upgrade installed packages
+  ansible.builtin.apt:
+    upgrade: "{{ packages_upgrade }}"
+    autoremove: true
+    autoclean: true
+    dpkg_options: "force-confdef,force-confold"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: packages_upgrade_enabled | bool
+
+- name: Install selected packages
+  ansible.builtin.apt:
+    name: "{{ packages_selected }}"
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  retries: 3
+  delay: 5
+
+- name: Configure apt-listchanges to avoid interactive prompts
+  ansible.builtin.copy:
+    dest: /etc/apt/listchanges.conf
+    content: |
+      [apt]
+      frontend=text
+      email_address={{ mail_to if mail_enabled | bool else '' }}
+      confirm=0
+      save_seen=/var/lib/apt/listchanges.db
+      which=both
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+
+- name: Attach Ubuntu Pro when a token is provided
+  ansible.builtin.command:
+    argv:
+      - pro
+      - attach
+      - "{{ ubuntu_pro_token }}"
+  when:
+    - ansible_distribution == 'Ubuntu'
+    - ubuntu_pro_token | length > 0
+  register: ubuntu_pro_attach
+  changed_when: "'already attached' not in (ubuntu_pro_attach.stdout | lower)"
+  failed_when: false
+  no_log: true

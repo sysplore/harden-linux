@@ -1,0 +1,22 @@
+---
+firewall_allowed_out_tcp:
+  - 43
+  - 53
+  - 80
+  - 443
+firewall_allowed_out_udp:
+  - 53
+  - 67
+  - 68
+  - 123
+firewall_mail_port: "{{ mail_port | default(587) }}"
+firewall_ufw_logging: low
+psad_enabled: true
+psad_enable_auto_ids: true
+psad_auto_ids_danger_level: 5
+fail2ban_enabled: true
+fail2ban_maxretry: 5
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_ignoreip:
+  - 127.0.0.1/8

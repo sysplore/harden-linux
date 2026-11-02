@@ -1,0 +1,34 @@
+# {{ ansible_managed }}
+# Security-only automatic upgrades. The #clear directive removes any list
+# inherited from 50unattended-upgrades, so the origins below are authoritative.
+
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern {
+{% for origin in unattended_upgrades_origins %}
+    "{{ origin }}";
+{% endfor %}
+};
+
+Unattended-Upgrade::Package-Blacklist {
+};
+
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::InstallOnShutdown "false";
+
+Dpkg::Options {
+    "--force-confdef";
+    "--force-confold";
+};
+
+{% if unattended_upgrades_mail | length > 0 %}
+Unattended-Upgrade::Mail "{{ unattended_upgrades_mail }}";
+{% else %}
+Unattended-Upgrade::Mail "";
+{% endif %}
+Unattended-Upgrade::MailOnlyOnError "true";
+
+Unattended-Upgrade::Remove-Unused-Dependencies "{{ 'true' if unattended_upgrades_remove_unused | bool else 'false' }}";
+
+Unattended-Upgrade::Automatic-Reboot "{{ 'true' if unattended_upgrades_automatic_reboot | bool else 'false' }}";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ unattended_upgrades_reboot_time }}";

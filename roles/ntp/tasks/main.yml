@@ -1,0 +1,45 @@
+---
+- name: Install systemd-timesyncd
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: ntp_provider == 'systemd-timesyncd'
+
+- name: Configure systemd-timesyncd
+  ansible.builtin.template:
+    src: timesyncd.conf.j2
+    dest: /etc/systemd/timesyncd.conf
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  when: ntp_provider == 'systemd-timesyncd'
+  notify: restart systemd-timesyncd
+
+- name: Enable NTP synchronization
+  ansible.builtin.command: timedatectl set-ntp true
+  changed_when: false
+  when: ntp_provider == 'systemd-timesyncd'
+
+- name: Enable and start systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+  when: ntp_provider == 'systemd-timesyncd'
+
+- name: Check NTP synchronization state
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: ntp_sync
+  changed_when: false
+  failed_when: false
+  when: ntp_provider == 'systemd-timesyncd'
+
+- name: Warn when NTP is not synchronized
+  ansible.builtin.debug:
+    msg: "WARNING: NTP is not synchronized yet. Check egress UDP/123 and the configured servers."
+  when:
+    - ntp_provider == 'systemd-timesyncd'
+    - ntp_sync.stdout | default('') | trim != 'yes'

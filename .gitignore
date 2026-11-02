@@ -1,1 +1,17 @@
+# Local inventory and secrets. Never commit real credentials.
+host_vars/*.yml
+!host_vars/example.yml
 group_vars/variables.yml
+group_vars/vault.yml
+group_vars/*.vault.yml
+*.vault
+*.retry
+semaphore.env
+.env
+.ansible/
+.commandcode/
+.cache/
+.venv/
+__pycache__/
+*.pyc
+collections/

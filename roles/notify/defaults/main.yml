@@ -1,0 +1,25 @@
+---
+notify_backend: auto
+notify_webhook_url: ""
+notify_webhook_field: text
+notify_ntfy_url: "https://ntfy.sh"
+notify_ntfy_topic: ""
+notify_ntfy_token: ""
+notify_gotify_url: ""
+notify_gotify_token: ""
+notify_subject_prefix: "[harden]"
+notify_test: false
+notify_reboot_notice: true
+notify_log_file: /var/log/harden/notify.log
+notify_config_path: /etc/harden-notify.conf
+notify_backend_effective: >-
+  {{ notify_backend if notify_backend != 'auto' else (
+       'smtp' if mail_enabled | default(false) | bool else (
+         'webhook' if notify_webhook_url | length > 0 else (
+           'ntfy' if notify_ntfy_topic | length > 0 else (
+             'gotify' if notify_gotify_url | length > 0 else 'none'
+           )
+         )
+       )
+     ) }}
+notify_enabled: "{{ (harden_features.notify | default(true) | bool) and (notify_backend_effective != 'none') }}"

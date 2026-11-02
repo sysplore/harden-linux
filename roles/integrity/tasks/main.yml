@@ -1,0 +1,78 @@
+---
+- name: Ensure AIDE configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/aide/aide.conf.d
+    - /var/log/aide
+
+- name: Ensure AIDE includes its configuration directory
+  ansible.builtin.lineinfile:
+    path: "{{ aide_config }}"
+    regexp: '^!include /etc/aide/aide.conf.d'
+    line: '!include /etc/aide/aide.conf.d/'
+    state: present
+    backup: true
+
+- name: Monitor security-critical paths with AIDE
+  ansible.builtin.copy:
+    dest: /etc/aide/aide.conf.d/99-hardening.conf
+    content: |
+      # Managed by Ansible
+      /etc/ssh/sshd_config PERMS
+      /etc/ssh/sshd_config.d PERMS
+      /etc/sudoers PERMS
+      /etc/sudoers.d PERMS
+      /etc/pam.d PERMS
+      /etc/audit PERMS
+      /etc/systemd/system PERMS
+      /boot PERMS
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Check whether the AIDE database exists
+  ansible.builtin.stat:
+    path: "{{ aide_database }}"
+  register: aide_db
+
+- name: Initialize the AIDE database
+  ansible.builtin.command: aideinit -y -f
+  args:
+    creates: "{{ aide_database }}"
+  register: aide_init
+  changed_when: aide_init.rc == 0
+  failed_when: false
+  when: not aide_db.stat.exists
+
+- name: Warn when AIDE initialization failed
+  ansible.builtin.debug:
+    msg: "WARNING: AIDE initialization failed. Run `aideinit -y -f` manually."
+  when:
+    - not aide_db.stat.exists
+    - aide_init is defined
+    - aide_init.rc | default(0) != 0
+
+- name: Schedule the daily AIDE check with notifications
+  ansible.builtin.cron:
+    name: AIDE integrity check
+    user: root
+    hour: "{{ aide_cron_hour }}"
+    minute: "{{ aide_cron_minute }}"
+    job: >-
+      /usr/bin/aide --check --config {{ aide_config }} 2>&1 |
+      /usr/local/sbin/harden-notify --subject 'AIDE integrity report: $(hostname)' --stdin --skip-empty
+  when: aide_notify | bool
+
+- name: Schedule the daily AIDE check to a local log
+  ansible.builtin.cron:
+    name: AIDE integrity check
+    user: root
+    hour: "{{ aide_cron_hour }}"
+    minute: "{{ aide_cron_minute }}"
+    job: "/usr/bin/aide --check --config {{ aide_config }} >> /var/log/aide/aide-check.log 2>&1"
+  when: not (aide_notify | bool)

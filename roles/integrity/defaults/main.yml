@@ -1,0 +1,6 @@
+---
+aide_config: /etc/aide/aide.conf
+aide_database: /var/lib/aide/aide.db
+aide_cron_hour: 4
+aide_cron_minute: 30
+aide_notify: "{{ notify_enabled | default(false) }}"

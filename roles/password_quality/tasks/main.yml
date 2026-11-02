@@ -1,0 +1,117 @@
+---
+- name: Configure pwquality
+  ansible.builtin.lineinfile:
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+    state: present
+    create: true
+    backup: true
+  loop:
+    - { key: minlen, value: "{{ password_minlen }}" }
+    - { key: difok, value: "{{ password_difok }}" }
+    - { key: retry, value: "{{ password_retry }}" }
+    - { key: dictcheck, value: "{{ 1 if password_dictcheck | bool else 0 }}" }
+    - { key: usercheck, value: "{{ 1 if password_usercheck | bool else 0 }}" }
+    - { key: gecoscheck, value: "{{ 1 if password_gecoscheck | bool else 0 }}" }
+    - { key: enforcing, value: "{{ 1 if password_enforcing | bool else 0 }}" }
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Use pwquality for password changes
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-password
+    regexp: '^password\s+requisite\s+pam_pwquality\.so'
+    line: >-
+      password requisite pam_pwquality.so retry={{ password_retry }}
+      minlen={{ password_minlen }} difok={{ password_difok }}
+      gecoscheck={{ 1 if password_gecoscheck | bool else 0 }}
+      dictcheck={{ 1 if password_dictcheck | bool else 0 }}
+      usercheck={{ 1 if password_usercheck | bool else 0 }}
+      enforcing={{ 1 if password_enforcing | bool else 0 }}
+    insertbefore: '^password\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    firstmatch: true
+    state: present
+    backup: true
+
+- name: Configure faillock
+  ansible.builtin.lineinfile:
+    path: /etc/security/faillock.conf
+    regexp: "^#?\\s*{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+    state: present
+    create: true
+    backup: true
+  loop:
+    - { key: deny, value: "{{ faillock_deny }}" }
+    - { key: unlock_time, value: "{{ faillock_unlock_time }}" }
+    - { key: fail_interval, value: "{{ faillock_fail_interval }}" }
+  loop_control:
+    label: "{{ item.key }}"
+  when: faillock_enabled | bool
+
+- name: Enable faillock audit logging
+  ansible.builtin.lineinfile:
+    path: /etc/security/faillock.conf
+    regexp: '^#?\s*audit\s*$'
+    line: 'audit'
+    state: present
+    create: true
+    backup: true
+  when:
+    - faillock_enabled | bool
+    - faillock_audit | bool
+
+- name: Check the PAM common-auth layout
+  ansible.builtin.command: grep -q 'pam_unix\.so' /etc/pam.d/common-auth
+  register: common_auth_check
+  changed_when: false
+  failed_when: false
+  when: faillock_enabled | bool
+
+- name: Require a supported common-auth layout
+  ansible.builtin.assert:
+    that:
+      - common_auth_check.rc == 0
+    fail_msg: "/etc/pam.d/common-auth does not contain pam_unix.so; cannot add faillock safely."
+  when: faillock_enabled | bool
+
+- name: Add faillock preauth
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-auth
+    line: 'auth required pam_faillock.so preauth'
+    insertbefore: '^auth\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    firstmatch: true
+    state: present
+    backup: true
+  when: faillock_enabled | bool
+
+- name: Add faillock authfail
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-auth
+    line: 'auth [default=die] pam_faillock.so authfail'
+    insertafter: '^auth\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    firstmatch: true
+    state: present
+    backup: true
+  when: faillock_enabled | bool
+
+- name: Add faillock authsucc
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-auth
+    line: 'auth sufficient pam_faillock.so authsucc'
+    insertafter: '^auth \[default=die\] pam_faillock\.so authfail'
+    firstmatch: true
+    state: present
+    backup: true
+  when: faillock_enabled | bool
+
+- name: Deny locked accounts in the account phase
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-account
+    line: 'account required pam_faillock.so'
+    insertbefore: '^account\s+\[success=1 new_authtok_reqd=done default=ignore\]\s+pam_unix\.so'
+    firstmatch: true
+    state: present
+    backup: true
+  when: faillock_enabled | bool

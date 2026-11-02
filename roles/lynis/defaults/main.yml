@@ -1,0 +1,5 @@
+---
+lynis_install_method: distro
+lynis_notify: "{{ notify_enabled | default(false) }}"
+lynis_report_dir: /var/log/lynis
+lynis_run_audit: true

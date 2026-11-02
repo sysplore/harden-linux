@@ -1,0 +1,17 @@
+[DEFAULT]
+ignoreip = {{ fail2ban_ignoreip | join(' ') }}
+{% if (notify_backend_effective | default('none') == 'smtp') and (mail_enabled | default(false) | bool) %}
+destemail = {{ mail_to }}
+sender = {{ mail_from }}
+mta = mail
+action = %(action_mwl)s
+{% elif notify_enabled | default(false) | bool %}
+action = %(action_)s
+         harden-notify
+{% else %}
+action = %(action_)s
+{% endif %}
+bantime = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+backend = auto

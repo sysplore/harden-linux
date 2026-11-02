@@ -1,0 +1,3 @@
+---
+rkhunter_cron_daily: true
+rkhunter_notify: "{{ notify_enabled | default(false) }}"

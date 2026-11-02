@@ -1,128 +1,127 @@
+---
+- name: Configure UFW default policies
+  community.general.ufw:
+    policy: deny
+    direction: "{{ item }}"
+  loop:
+    - incoming
+    - outgoing
+    - routed
+  notify: reload ufw
 
-    - name: default config for ufw
-      become: true
-      ufw:
-        state: enabled
-        logging: on
-      notify: restart ufw service
+- name: Allow SSH with rate limiting
+  community.general.ufw:
+    rule: limit
+    direction: in
+    port: "{{ ssh_port }}"
+    proto: tcp
+  notify: reload ufw
 
-    - name: ufw - default deny in
-      become: true
-      ufw:
-        policy: deny
-        direction: incoming
-      notify: restart ufw service
+- name: Allow outbound TCP ports
+  community.general.ufw:
+    rule: allow
+    direction: out
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ (firewall_allowed_out_tcp + [firewall_mail_port]) | unique }}"
+  notify: reload ufw
 
-    - name: ufw - default deny out
-      become: true
-      ufw:
-        policy: deny
-        direction: outgoing
-      notify: restart ufw service
+- name: Allow outbound UDP ports
+  community.general.ufw:
+    rule: allow
+    direction: out
+    port: "{{ item }}"
+    proto: udp
+  loop: "{{ firewall_allowed_out_udp | unique }}"
+  notify: reload ufw
 
-    - name: ufw - configure ssh rule
-      become: true
-      ufw:
-        rule: limit
-        direction: in
-        to_port: "{{ ssh_port }}"
-      notify: restart ufw service
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+    logging: "{{ firewall_ufw_logging }}"
+  notify: reload ufw
 
-    - name: ufw - allow outgoing ports
-      become: true
-      ufw: 
-        rule: allow
-        direction: out
-        to_port: "{{ item }}"
-      with_items:
-        - "43"
-        - "53"
-        - "123"
-        - "80"
-        - "443"
-        - "{{ mail_port }}" #outgoing mail port
-      notify: restart ufw service
+- name: Configure psad
+  ansible.builtin.lineinfile:
+    path: /etc/psad/psad.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: true
+  loop:
+    - regexp: '^EMAIL_ADDRESSES'
+      line: 'EMAIL_ADDRESSES {{ mail_to if mail_enabled | bool else "root@localhost" }};'
+    - regexp: '^EXPECT_TCP_OPTIONS'
+      line: 'EXPECT_TCP_OPTIONS Y;'
+    - regexp: '^ENABLE_PSADWATCHD'
+      line: 'ENABLE_PSADWATCHD Y;'
+    - regexp: '^ENABLE_AUTO_IDS '
+      line: 'ENABLE_AUTO_IDS {{ "Y" if psad_enable_auto_ids | bool else "N" }};'
+    - regexp: '^ENABLE_AUTO_IDS_EMAILS'
+      line: 'ENABLE_AUTO_IDS_EMAILS {{ "Y" if mail_enabled | bool else "N" }};'
+    - regexp: '^AUTO_IDS_DANGER_LEVEL'
+      line: 'AUTO_IDS_DANGER_LEVEL {{ psad_auto_ids_danger_level }};'
+    - regexp: '^HOSTNAME'
+      line: 'HOSTNAME {{ ansible_hostname }};'
+  notify: restart psad
+  when: psad_enabled | bool
 
-    - name: configure psad
-      become: true
-      lineinfile:
-        dest: /etc/psad/psad.conf
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^EMAIL_ADDRESSES', line: 'EMAIL_ADDRESSES {{ mail_to }};' }
-        - { regexp: '^EXPECT_TCP_OPTIONS', line: 'EXPECT_TCP_OPTIONS Y;'}
-        - { regexp: '^ENABLE_PSADWATCHD', line: 'ENABLE_PSADWATCHD Y;'}
-        - { regexp: '^ENABLE_AUTO_IDS ', line: 'ENABLE_AUTO_IDS Y;'}
-        - { regexp: '^ENABLE_AUTO_IDS_EMAILS', line: 'ENABLE_AUTO_IDS_EMAILS Y;'}
-        - { regexp: '^AUTO_IDS_DANGER_LEVEL', line: 'AUTO_IDS_DANGER_LEVEL 3;'}
-        - { regexp: '^HOSTNAME', line: 'HOSTNAME {{ ansible_hostname }};'}
-      notify: restart psad service
+- name: Log blocked traffic for psad
+  ansible.builtin.blockinfile:
+    path: "{{ item }}"
+    insertbefore: "COMMIT"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - psad"
+    block: |
+      # log all traffic so psad can analyze
+      -A INPUT -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
+      -A FORWARD -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
+    backup: true
+    create: true
+  loop:
+    - /etc/ufw/before.rules
+    - /etc/ufw/before6.rules
+  notify: reload ufw
+  when: psad_enabled | bool
 
-    - name: add logging to ufw before.rules
-      become: true
-      blockinfile:
-        dest: /etc/ufw/before.rules
-        insertbefore: "COMMIT"
-        marker: "# {mark} ANSIBLE MANAGED BLOCK"
-        block: |
-          # log all traffic so psad can analyze
-          -A INPUT -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
-          -A FORWARD -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
-      notify: restart ufw service
+- name: Update psad signatures
+  ansible.builtin.command: psad --sig-update
+  changed_when: false
+  failed_when: false
+  retries: 2
+  delay: 5
+  when: psad_enabled | bool
 
-    - name: add logging to ufw before6.rules
-      become: true
-      blockinfile:
-        dest: /etc/ufw/before6.rules
-        insertbefore: "COMMIT"
-        marker: "# {mark} ANSIBLE MANAGED BLOCK"
-        block: |
-          # log all traffic so psad can analyze
-          -A INPUT -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
-          -A FORWARD -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
-      notify: restart ufw service
+- name: Enable and start psad
+  ansible.builtin.systemd:
+    name: psad
+    enabled: true
+    state: started
+  when: psad_enabled | bool
 
-    - name: update psad signatures
-      become: true
-      shell: |
-        psad --sig-update
+- name: Configure fail2ban defaults
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  notify: restart fail2ban
+  when: fail2ban_enabled | bool
 
-    - name: configure fail2ban
-      become: true
-      blockinfile:
-        path: /etc/fail2ban/jail.local
-        block: |
-          [DEFAULT]
-          # the IP address range we want to ignore
-          ignoreip = 127.0.0.1/8 
+- name: Configure the SSH fail2ban jail
+  ansible.builtin.template:
+    src: sshd.local.j2
+    dest: /etc/fail2ban/jail.d/sshd.local
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  notify: restart fail2ban
+  when: fail2ban_enabled | bool
 
-          # who to send e-mail to
-          destemail = {{ mail_to }}
-
-          # who is the email from
-          sender = {{ mail_from }}
-
-          # since we're using exim4 to send emails
-          mta = mail
-
-          # get email alerts
-          action = %(action_mwl)s
-        create: true
-      notify: restart fail2ban service
-
-    - name: fail2ban - configure ssh jail 
-      become: true
-      blockinfile:
-        path: /etc/fail2ban/jail.d/ssh.local
-        block: |
-          [sshd]
-          enabled = true
-          banaction = ufw
-          port = {{ ssh_port }}
-          filter = sshd
-          logpath = %(sshd_log)s
-          maxretry = 5
-        create: true
-      notify: restart fail2ban service
-
+- name: Enable and start fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  when: fail2ban_enabled | bool

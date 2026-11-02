@@ -1,16 +1,36 @@
+---
+- name: Ensure the ClamAV log directory exists
+  ansible.builtin.file:
+    path: /var/log/clamav
+    state: directory
+    owner: clamav
+    group: clamav
+    mode: '0750'
 
-    - name: set cron MAILTO
-      become: true
-      cronvar:
-        user: root
-        name: MAILTO
-        value: "{{ mail_to }}"
+- name: Deploy the ClamAV scan wrapper
+  ansible.builtin.template:
+    src: clamav-scan.sh.j2
+    dest: /usr/local/sbin/clamav-scan.sh
+    owner: root
+    group: root
+    mode: '0755'
 
-    - name: add crontab to run clamav daily at 3 AM
-      become: true
-      cron:
-        name: clamav daily run
-        minute: "0"
-        hour: "3"
-        job: "/usr/bin/clamscan -ri --exclude-dir=\"^/sys\" --no-summary /"
-        user: root
+- name: Suppress cron-generated mail
+  community.general.cronvar:
+    user: root
+    name: MAILTO
+    value: ""
+
+- name: Schedule the daily ClamAV scan
+  ansible.builtin.cron:
+    name: clamav daily scan
+    user: root
+    hour: "{{ clamav_scan_hour }}"
+    minute: "{{ clamav_scan_minute }}"
+    job: /usr/local/sbin/clamav-scan.sh
+
+- name: Enable signature updates
+  ansible.builtin.systemd:
+    name: clamav-freshclam
+    enabled: true
+    state: started

@@ -1,0 +1,7 @@
+[Definition]
+actionstart =
+actionstop =
+actioncheck =
+actionban = /usr/local/sbin/harden-notify --subject "[fail2ban] <name> banned <ip>" --body "Jail <name> banned <ip>."
+actionunban = /usr/local/sbin/harden-notify --subject "[fail2ban] <name> unbanned <ip>" --body "Jail <name> unbanned <ip>."
+[Init]

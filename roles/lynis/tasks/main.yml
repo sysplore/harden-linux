@@ -1,52 +1,117 @@
-- name: update and upgrade
-  become: true
-  apt:
-    update_cache: yes
-    upgrade: yes
-
-- name: install lynis dependencies
-  become: true
-  apt:
-    name: gpg
+---
+- name: Install Lynis from the distribution
+  ansible.builtin.apt:
+    name:
+      - lynis
+      - python3-ansi2html
     state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: lynis_install_method == 'distro'
 
-- name: download cisofy signing key
-  become: true
+- name: Install gnupg for the vendor repository
+  ansible.builtin.apt:
+    name: gnupg
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: lynis_install_method == 'vendor'
+
+- name: Download the Cisofy signing key
   ansible.builtin.get_url:
     url: https://packages.cisofy.com/keys/cisofy-software-public.key
     dest: /usr/share/keyrings/cisofy-archive-keyring.asc
-    mode: "0644"
+    owner: root
+    group: root
+    mode: '0644'
+  when: lynis_install_method == 'vendor'
 
-- name: dearmor cisofy signing key
-  become: true
-  ansible.builtin.command: >-
-    gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg
-    /usr/share/keyrings/cisofy-archive-keyring.asc
+- name: Dearmor the Cisofy signing key
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - -o
+      - /usr/share/keyrings/cisofy-archive-keyring.gpg
+      - /usr/share/keyrings/cisofy-archive-keyring.asc
   args:
     creates: /usr/share/keyrings/cisofy-archive-keyring.gpg
+  when: lynis_install_method == 'vendor'
 
-- name: add cisofy repository
-  become: true
-  apt_repository:
+- name: Add the Cisofy repository
+  ansible.builtin.apt_repository:
     repo: "deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main"
     filename: cisofy-lynis
     state: present
+    update_cache: true
+  when: lynis_install_method == 'vendor'
 
-- name: update and upgrade
-  become: true
-  apt:
-    update_cache: yes
-    upgrade: yes
+- name: Pin the Cisofy repository
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/cisofy-lynis
+    content: |
+      Package: *
+      Pin: origin packages.cisofy.com
+      Pin-Priority: 100
+    owner: root
+    group: root
+    mode: '0644'
+  when: lynis_install_method == 'vendor'
 
-- name: install lynis
-  become: true
-  apt:
-    name: lynis
+- name: Install Lynis from the vendor repository
+  ansible.builtin.apt:
+    name:
+      - lynis
+      - python3-ansi2html
     state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: lynis_install_method == 'vendor'
 
-- name: update and run first lynis audit
-  become: true
-  shell: |
-    lynis update info
-    lynis audit system | ansi2html -l > /tmp/lynis-report.html
-    echo "First Lynis report see attachment" | mail -A /tmp/lynis-report.html -s "Lynis report" {{ mail_to }}
+- name: Ensure the Lynis report directory exists
+  ansible.builtin.file:
+    path: "{{ lynis_report_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Run the Lynis audit
+  ansible.builtin.shell: |
+    set -o pipefail
+    umask 077
+    report="$(mktemp --suffix=.html {{ lynis_report_dir }}/lynis-XXXXXX)"
+    lynis audit system 2>&1 | ansi2html -l > "$report" || true
+    if [ ! -s "$report" ]; then
+      rm -f "$report"
+      echo "empty"
+      exit 0
+    fi
+    {% if (lynis_notify | bool) and (notify_backend_effective | default('none') == 'smtp') and (mail_enabled | default(false) | bool) %}
+    /usr/bin/mail -A "$report" -s "Lynis report: $(hostname)" "{{ mail_to }}" || true
+    {% elif (lynis_notify | bool) and (notify_enabled | default(false) | bool) %}
+    /usr/local/sbin/harden-notify --subject "Lynis report: $(hostname)" --body "Report kept at $report" || true
+    {% endif %}
+    echo "kept:$report"
+  args:
+    executable: /bin/bash
+  register: lynis_run
+  changed_when: false
+  failed_when: false
+  when: lynis_run_audit | bool
+
+- name: Show the Lynis report path
+  ansible.builtin.debug:
+    msg: "Lynis report kept at {{ lynis_run.stdout | regex_replace('^kept:', '') }}"
+  when:
+    - lynis_run_audit | bool
+    - lynis_run.stdout is defined
+    - lynis_run.stdout is search('^kept:')
+
+- name: Warn when the Lynis audit produced no report
+  ansible.builtin.debug:
+    msg: "WARNING: Lynis produced no report. Check that lynis and ansi2html are installed."
+  when:
+    - lynis_run_audit | bool
+    - lynis_run.stdout is defined
+    - lynis_run.stdout is search('^empty$')

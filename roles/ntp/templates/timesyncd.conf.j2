@@ -1,0 +1,8 @@
+[Time]
+NTP={{ ntp_servers | join(' ') }}
+{% if ntp_fallback_servers | length > 0 %}
+FallbackNTP={{ ntp_fallback_servers | join(' ') }}
+{% endif %}
+RootDistanceMaxSec=5
+PollIntervalMinSec=32
+PollIntervalMaxSec=2048

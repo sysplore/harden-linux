@@ -1,0 +1,103 @@
+---
+- name: Validate notification configuration
+  ansible.builtin.assert:
+    that:
+      - notify_backend_effective != 'smtp' or (mail_enabled | default(false) | bool)
+      - notify_backend_effective != 'webhook' or (notify_webhook_url | length > 0)
+      - notify_backend_effective != 'ntfy' or (notify_ntfy_topic | length > 0)
+      - notify_backend_effective != 'gotify' or ((notify_gotify_url | length > 0) and (notify_gotify_token | length > 0))
+    fail_msg: >-
+      Invalid notification backend '{{ notify_backend_effective }}'.
+      Check notify_backend, mail_to, notify_webhook_url, notify_ntfy_topic,
+      or notify_gotify_url/notify_gotify_token.
+
+- name: Ensure the notification log directory exists
+  ansible.builtin.file:
+    path: /var/log/harden
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Install the notification helper
+  ansible.builtin.template:
+    src: harden-notify.sh.j2
+    dest: /usr/local/sbin/harden-notify
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure the notification helper
+  ansible.builtin.template:
+    src: harden-notify.conf.j2
+    dest: "{{ notify_config_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Rotate notification logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/harden-notify
+    content: |
+      /var/log/harden/notify.log {
+          weekly
+          rotate 8
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 root root
+      }
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure the fail2ban action directory exists
+  ansible.builtin.file:
+    path: /etc/fail2ban/action.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: fail2ban_enabled | default(true) | bool
+
+- name: Install the fail2ban notification action
+  ansible.builtin.template:
+    src: fail2ban-harden-notify.conf.j2
+    dest: /etc/fail2ban/action.d/harden-notify.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when: fail2ban_enabled | default(true) | bool
+
+- name: Send a test notification
+  ansible.builtin.command: /usr/local/sbin/harden-notify --test
+  register: notify_test_result
+  changed_when: false
+  failed_when: false
+  when:
+    - notify_test | bool
+    - notify_enabled | bool
+
+- name: Report a failed test notification
+  ansible.builtin.debug:
+    msg: "WARNING: test notification failed: {{ notify_test_result.stderr | default('') | trim }}"
+  when:
+    - notify_test | bool
+    - notify_test_result is defined
+    - notify_test_result.rc | default(0) != 0
+
+- name: Schedule the reboot-required notification
+  ansible.builtin.cron:
+    name: harden reboot-required check
+    user: root
+    hour: '5'
+    minute: '15'
+    job: >-
+      [ -f /var/run/reboot-required ] &&
+      /usr/local/sbin/harden-notify --subject 'Reboot required on $(hostname)'
+      --body-file /var/run/reboot-required --skip-empty || true
+  when:
+    - notify_reboot_notice | bool
+    - notify_enabled | bool

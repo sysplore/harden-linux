@@ -1,0 +1,8 @@
+---
+journald_storage: persistent
+journald_system_max_use: 1G
+journald_max_retention: 90d
+journald_rate_limit_interval: 30s
+journald_rate_limit_burst: 10000
+logwatch_enabled: "{{ notify_enabled | default(false) }}"
+logwatch_detail: Med

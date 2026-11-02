@@ -1,0 +1,13 @@
+---
+clamav_scan_hour: 3
+clamav_scan_minute: 0
+clamav_scan_paths:
+  - /
+clamav_exclude_dirs:
+  - /proc
+  - /sys
+  - /dev
+  - /run
+  - /var/lib/clamav
+clamav_max_filesize: 100M
+clamav_max_scansize: 400M

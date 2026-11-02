@@ -1,0 +1,42 @@
+---
+- name: Configure the apt periodic update schedule
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/21auto-upgrades-ansible
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+
+- name: Configure unattended-upgrades
+  ansible.builtin.template:
+    src: 52unattended-upgrades-ansible.j2
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-ansible
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+
+- name: Enable and start unattended-upgrades
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - unattended-upgrades.service
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+
+- name: Validate the unattended-upgrades configuration
+  ansible.builtin.command: unattended-upgrade --dry-run --debug
+  register: uu_check
+  changed_when: false
+  failed_when: false
+
+- name: Report an invalid unattended-upgrades configuration
+  ansible.builtin.debug:
+    msg: "WARNING: unattended-upgrade --dry-run failed: {{ uu_check.stderr | default('') | trim }}"
+  when: uu_check.rc != 0

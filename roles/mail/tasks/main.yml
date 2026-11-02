@@ -1,51 +1,59 @@
+---
+- name: Require SMTP settings
+  ansible.builtin.assert:
+    that:
+      - mail_smtp_server | length > 0
+      - mail_pw | length > 0
+    fail_msg: "mail_smtp_server and mail_pw are required when mail is enabled."
 
-    - name: configure mail settings
-      become: true
-      blockinfile:
-        path: /etc/msmtprc
-        block: |
-          defaults
-          port {{ mail_port }}
-          tls on
-          tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          account {{ mail_from }}
-          host {{ mail_smtp_server }}
-          set_from_header on
-          from {{ mail_from }}
-          auth on
-          user {{ mail_from }}
-          password {{ mail_pw }}
-          account default: {{ mail_from }}
-          aliases /etc/aliases
-          logfile /var/log/msmtp
-        create: true
+- name: Configure msmtp
+  ansible.builtin.template:
+    src: msmtprc.j2
+    dest: /etc/msmtprc
+    owner: root
+    group: msmtp
+    mode: '0640'
+    backup: true
+  no_log: true
 
-    - name: chmod mail config file
-      become: true
-      file:
-        path: /etc/msmtprc
-        group: msmtp
-        mode: '640'
+- name: Configure mail aliases
+  ansible.builtin.lineinfile:
+    path: /etc/aliases
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    create: true
+    backup: true
+  loop:
+    - { regexp: '^root:', line: 'root: {{ mail_to }}' }
+    - { regexp: '^default:', line: 'default: {{ mail_to }}' }
 
-    - name: configure mail settings pt. 2
-      become: true
-      lineinfile:
-        dest: /etc/aliases
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        create: true
-      loop:
-        - { regexp: '^root:', line: 'root: {{ mail_to }}' }
-        - { regexp: '^default:', line: 'default: {{ mail_to }}' }
+- name: Point mail(1) at msmtp
+  ansible.builtin.lineinfile:
+    path: /etc/mail.rc
+    regexp: '^set sendmail'
+    line: 'set sendmail="/usr/bin/msmtp -t"'
+    state: present
+    create: true
+    backup: true
 
-    - name: configure mail settings pt. 3
-      become: true
-      lineinfile:
-        path: /etc/mail.rc
-        regexp: '^set sendmail'
-        line: 'set sendmail="/usr/bin/msmtp -t"'
-        create: yes
+- name: Send a test message
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/mail
+      - -s
+      - Hardening test message
+      - "{{ mail_to }}"
+    stdin: "Test message from the hardening playbook.\n"
+  register: mail_test
+  changed_when: false
+  failed_when: false
+  when: mail_send_test | bool
 
-    - name: send a testmail
-      become: true
-      shell: echo "Testmail content" | mail -s "Testmail subject" {{ mail_to }}
+- name: Report a failed test message
+  ansible.builtin.debug:
+    msg: "WARNING: test mail failed: {{ mail_test.stderr | default('') | trim }}"
+  when:
+    - mail_send_test | bool
+    - mail_test is defined
+    - mail_test.rc | default(0) != 0

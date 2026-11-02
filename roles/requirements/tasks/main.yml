@@ -1,58 +1,142 @@
-    - name: apt update
-      apt:
-        update_cache: yes
-        upgrade: false
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
 
-    - name: install sudo via apt
-      apt:
-        name: sudo
+- name: Install bootstrap packages
+  ansible.builtin.apt:
+    name:
+      - sudo
+      - python3
+      - python3-apt
+      - ca-certificates
+      - openssh-server
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
 
-    - name: create group for ssh users
-      group:
-        name: sshusers
+- name: Require at least one credential for the hardening user
+  ansible.builtin.assert:
+    that:
+      - (user_pw | length > 0) or (ssh_public_key | length > 0) or (sshpub_location | length > 0)
+    fail_msg: "Set user_pw and/or ssh_public_key/sshpub_location for {{ user_name }}."
 
-    - name: create group for su users
-      group:
-        name: suusers
+- name: Create service groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - sshusers
+    - sudousers
+    - suusers
 
-    - name: create group for sudo users
-      group:
-        name: sudousers
+- name: Create the hardening user
+  ansible.builtin.user:
+    name: "{{ user_name }}"
+    password: >-
+      {{ (user_pw | password_hash('yescrypt')) if (user_pw | length > 0 and pam_yescrypt | default(true) | bool)
+         else ((user_pw | password_hash('sha512')) if user_pw | length > 0 else '*') }}
+    update_password: on_create
+    groups:
+      - sshusers
+      - sudousers
+      - suusers
+    append: true
+    shell: /bin/bash
+    create_home: true
+    state: present
+  no_log: true
 
-    - name: create new user with password, add to groups
-      user:
-        name: "{{ user_name }}"
-        password: "{{ user_pw | password_hash('sha512')}}"
-        groups: "sshusers, sudousers, suusers"
-        shell: /bin/bash
+- name: Ensure sudoers.d is included
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    regexp: '^@includedir /etc/sudoers.d'
+    line: '@includedir /etc/sudoers.d'
+    state: present
+    validate: 'visudo -cf %s'
+    backup: true
 
-    - name: limit sudo to sudousers groups
-      lineinfile:
-        path: /etc/sudoers
-        regexp: '^%sudousers'
-        line: '%sudousers   ALL=(ALL:ALL) ALL'
+- name: Harden sudo defaults
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/00-hardening
+    content: |
+      Defaults use_pty
+      Defaults logfile="{{ sudo_logfile }}"
+      Defaults timestamp_timeout={{ sudo_timestamp_timeout }}
+      Defaults passwd_tries=3
+      Defaults env_reset
+      Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
 
-    - name: limit who can use su
-      register: sustd
-      shell: |
-        sudo dpkg-statoverride --update --add root suusers 4750 /bin/su
-      failed_when: 
-        - sustd.rc != 0
-        - '"exist" not in sustd.stderr' # this has to be changed: unsure how to skip the "already exist" error in other languages
+- name: Limit sudo to the sudousers group
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/10-sudousers
+    content: |
+      %sudousers ALL=(ALL:ALL) ALL
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
 
-    - name: passwordless sudo for new user
-      lineinfile:
-        path: /etc/sudoers
-        regexp: '^{{ user_name }}'
-        line: '{{ user_name }} ALL=(ALL) NOPASSWD: ALL'
-        state: present
-        mode: 0440
-        create: yes
-        validate: 'visudo -cf %s'
+- name: Grant the hardening user sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/20-{{ user_name }}"
+    content: |
+      {% if sudo_nopasswd | bool %}
+      {{ user_name }} ALL=(ALL:ALL) NOPASSWD: ALL
+      {% else %}
+      {{ user_name }} ALL=(ALL:ALL) ALL
+      {% endif %}
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
 
-    - name: add authorized keys for new user
-      authorized_key:
-        user: "{{ user_name }}"
-        key: "{{ lookup('file', sshpub_location) }}"
+- name: Locate the su binary
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/bin/su
+    - /bin/su
+  register: su_binary
 
-    
+- name: Resolve the su binary path
+  ansible.builtin.set_fact:
+    su_path: "{{ (su_binary.results | selectattr('stat.exists') | first).item }}"
+
+- name: Read the current su statoverride
+  ansible.builtin.command:
+    argv:
+      - dpkg-statoverride
+      - --list
+      - "{{ su_path }}"
+  register: su_override
+  changed_when: false
+  failed_when: false
+
+- name: Restrict su to the suusers group
+  ansible.builtin.command:
+    argv:
+      - dpkg-statoverride
+      - --update
+      - --add
+      - root
+      - suusers
+      - "4750"
+      - "{{ su_path }}"
+  when: su_override.stdout | trim != 'root suusers 4750 ' ~ su_path
+  changed_when: true
+
+- name: Install the authorized SSH key
+  ansible.posix.authorized_key:
+    user: "{{ user_name }}"
+    key: "{{ ssh_public_key if ssh_public_key | length > 0 else lookup('file', sshpub_location) }}"
+    exclusive: "{{ ssh_authorized_keys_exclusive | bool }}"
+    state: present
+  when: (ssh_public_key | length > 0) or (sshpub_location | length > 0)

@@ -1,0 +1,13 @@
+---
+unattended_upgrades_enabled: true
+unattended_upgrades_automatic_reboot: true
+unattended_upgrades_reboot_time: "03:30"
+unattended_upgrades_remove_unused: true
+unattended_upgrades_mail: "{{ mail_to | default('') }}"
+unattended_upgrades_origins: >-
+  {{ (['origin=Debian,codename=${distro_codename}-security,label=Debian-Security',
+       'origin=Debian,codename=${distro_codename},label=Debian-Security']
+      if ansible_distribution == 'Debian'
+      else ['origin=Ubuntu,codename=${distro_codename}-security,label=Ubuntu',
+            'origin=UbuntuESM,codename=${distro_codename}-infra-security,label=UbuntuESM',
+            'origin=UbuntuESMApps,codename=${distro_codename}-apps-security,label=UbuntuESMApps']) }}

@@ -1,0 +1,52 @@
+---
+# BSI IT-Grundschutz (SYS.1.1, SYS.1.3, DER.1, OPS.1.1.3/4/5) oriented profile.
+harden_features:
+  packages: true
+  system: true
+  ntp: true
+  logging: true
+  mail: true
+  notify: true
+  ssh: true
+  password_policy: true
+  unattended_upgrades: true
+  firewall: true
+  clamav: true
+  rkhunter: true
+  integrity: true
+  auditd: true
+  lynis: true
+  mfa: false
+
+password_minlen: 15
+password_difok: 3
+password_dictcheck: true
+password_usercheck: true
+password_gecoscheck: true
+password_enforcing: true
+faillock_enabled: true
+faillock_deny: 5
+faillock_unlock_time: 900
+faillock_fail_interval: 900
+
+# BSI expects a documented, risk-based password change interval.
+login_defs_pass_max_days: 90
+login_defs_pass_min_days: 1
+login_defs_pass_warn_age: 14
+
+ssh_password_authentication: false
+ssh_max_auth_tries: 3
+ssh_login_grace_time: 30
+ssh_required_rsa_size: 3072
+ssh_enable_pq_kex: true
+
+# BSI SYS.1.3.A14: restrict process information; test before enabling.
+proc_hidepid: 2
+mount_tmp_hardening: true
+mount_var_tmp_hardening: true
+mount_dev_shm_hardening: true
+mount_home_hardening: true
+
+unattended_upgrades_automatic_reboot: true
+unattended_upgrades_reboot_time: "03:30"
+unattended_upgrades_remove_unused: true

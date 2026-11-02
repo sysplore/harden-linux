@@ -1,0 +1,27 @@
+---
+# Copy this file to host_vars/<inventory_hostname>.yml and fill it in.
+#
+# Connection credentials for bootstrap (root or a sudo-capable user):
+ansible_host: 203.0.113.10
+ansible_user: root
+ansible_port: 22
+# ansible_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   ...
+# ansible_become_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   ...
+#
+# After requirements-playbook.yml has created the hardening user, switch to
+# key-based auth for main-playbook.yml:
+# ansible_user: ansible
+# ansible_ssh_private_key_file: ~/.ssh/id_ed25519_server1
+# ansible_become_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   ...
+#
+# Per-host overrides:
+# ssh_port: 55899
+# mail_to: ops@example.com
+# harden_features:
+#   mail: false

@@ -1,0 +1,20 @@
+---
+# Baseline hardening profile.
+# Use as: ansible-playbook ... --extra-vars @profiles/baseline.yml
+harden_features:
+  packages: true
+  system: true
+  ntp: true
+  logging: true
+  mail: true
+  notify: true
+  ssh: true
+  password_policy: true
+  unattended_upgrades: true
+  firewall: true
+  clamav: true
+  rkhunter: true
+  integrity: true
+  auditd: true
+  lynis: true
+  mfa: false

@@ -1,17 +1,149 @@
-    - name: Main-Playbook
-      hosts: debian-server
-      remote_user: "{{ user_name }}"
-      gather_facts: yes
-      vars_files: ./group_vars/variables.yml
+---
+- name: Harden Debian and Ubuntu servers
+  hosts: linux
+  gather_facts: true
+  remote_user: "{{ user_name }}"
+  become: true
+  become_method: ansible.builtin.sudo
+  force_handlers: true
+  any_errors_fatal: false
+  serial: "{{ harden_serial | default('100%') }}"
+  pre_tasks:
+    - name: Assert supported platform
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution in ['Debian', 'Ubuntu']
+          - (ansible_distribution != 'Debian') or (ansible_distribution_major_version | int >= 12)
+          - (ansible_distribution != 'Ubuntu') or (ansible_distribution_major_version | int >= 22)
+        fail_msg: "Supported platforms: Debian 12+ and Ubuntu 22.04+."
+        tags: [always]
 
-      roles:
-        - packages
-        - ssh
-        - password-quality
-        - unattended-upgrades
-        - firewall
-        - mail
-        - clamav
-        - rkhunter
-        - auditd
-        - lynis
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      tags: [always]
+
+    - name: Warn when connecting as root
+      ansible.builtin.debug:
+        msg: "WARNING: ansible_user is root. Use a dedicated sudo user for day-to-day hardening."
+      when: ansible_user | default('') == 'root'
+      tags: [always]
+
+    - name: Validate mail settings when mail is enabled
+      ansible.builtin.assert:
+        that:
+          - mail_smtp_server | length > 0
+          - mail_pw | length > 0
+        fail_msg: "mail_to is set but mail_smtp_server or mail_pw is empty. Set them or clear mail_to."
+        tags: [always]
+      when:
+        - mail_enabled | bool
+        - harden_features.mail | default(true) | bool
+
+  roles:
+    - role: packages
+      when: harden_features.packages | default(true) | bool
+      tags: [packages, base]
+
+    - role: system_hardening
+      when: harden_features.system | default(true) | bool
+      tags: [system, hardening]
+
+    - role: ntp
+      when: harden_features.ntp | default(true) | bool
+      tags: [ntp]
+
+    - role: mail
+      when:
+        - harden_features.mail | default(true) | bool
+        - mail_enabled | bool
+      tags: [mail]
+      ignore_errors: "{{ harden_continue_on_error | bool }}"
+
+    - role: notify
+      when: harden_features.notify | default(true) | bool
+      tags: [notify, notifications]
+
+    - role: logging
+      when: harden_features.logging | default(true) | bool
+      tags: [logging]
+
+    - role: ssh
+      when: harden_features.ssh | default(true) | bool
+      tags: [ssh]
+
+    - role: mfa
+      when:
+        - harden_features.mfa | default(false) | bool
+        - ssh_mfa_enabled | bool
+      tags: [mfa]
+      ignore_errors: "{{ harden_continue_on_error | bool }}"
+
+    - role: password_quality
+      when: harden_features.password_policy | default(true) | bool
+      tags: [password, auth]
+
+    - role: unattended_upgrades
+      when: harden_features.unattended_upgrades | default(true) | bool
+      tags: [updates, patching]
+
+    - role: firewall
+      when: harden_features.firewall | default(true) | bool
+      tags: [firewall, network]
+
+    - role: clamav
+      when: harden_features.clamav | default(true) | bool
+      tags: [clamav, malware]
+      ignore_errors: "{{ harden_continue_on_error | bool }}"
+
+    - role: rkhunter
+      when: harden_features.rkhunter | default(true) | bool
+      tags: [rkhunter, malware]
+      ignore_errors: "{{ harden_continue_on_error | bool }}"
+
+    - role: integrity
+      when: harden_features.integrity | default(true) | bool
+      tags: [integrity, aide]
+      ignore_errors: "{{ harden_continue_on_error | bool }}"
+
+    - role: auditd
+      when:
+        - harden_features.auditd | default(true) | bool
+        - ansible_virtualization_type | default('') not in ['docker', 'lxc', 'containerd']
+      tags: [auditd, audit]
+
+    - role: lynis
+      when: harden_features.lynis | default(true) | bool
+      tags: [lynis, audit]
+      ignore_errors: "{{ harden_continue_on_error | bool }}"
+
+  post_tasks:
+    - name: Verify sshd configuration
+      ansible.builtin.command: sshd -t
+      changed_when: false
+      when: harden_features.ssh | default(true) | bool
+      tags: [verify]
+
+    - name: Verify UFW status
+      ansible.builtin.command: ufw status verbose
+      changed_when: false
+      failed_when: false
+      when:
+        - harden_features.firewall | default(true) | bool
+        - firewall_enabled | bool
+      tags: [verify]
+
+    - name: Check whether a reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+      tags: [verify]
+
+    - name: Report reboot-required state
+      ansible.builtin.debug:
+        msg: "Reboot required to finish updates."
+      when: reboot_required_file.stat.exists
+      tags: [verify]

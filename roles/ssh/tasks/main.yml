@@ -1,92 +1,113 @@
-    - name: ufw - preemptively allow new SSH port
-      become: true
-      community.general.ufw:
-        rule: limit
-        direction: in
-        to_port: "{{ ssh_port }}"
-      notify: "firewall : restart ufw service"
+---
+- name: Read the OpenSSH version
+  ansible.builtin.command: ssh -V
+  register: ssh_version
+  changed_when: false
+  check_mode: false
 
-    - name: flush handlers to restart ufw
-      ansible.builtin.meta: flush_handlers
+- name: Parse the OpenSSH version
+  ansible.builtin.set_fact:
+    ssh_version_text: "{{ ssh_version.stdout }}{{ ssh_version.stderr }}"
 
-    - name: secure ssh configuration 
-      become: true
-      blockinfile:
-        path: /etc/ssh/sshd_config
-        block: |
-          ########################################################################################################
-          # start settings from https://infosec.mozilla.org/guidelines/openssh#modern-openssh-67 as of 2019-01-01
-          ########################################################################################################
-          # Supported HostKey algorithms by order of preference.
-          HostKey /etc/ssh/ssh_host_ed25519_key
-          HostKey /etc/ssh/ssh_host_rsa_key
-          HostKey /etc/ssh/ssh_host_ecdsa_key
-          KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256
-          Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
-          MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,umac-128@openssh.com
-          # LogLevel VERBOSE logs user's key fingerprint on login. Needed to have a clear audit track of which key was using to log in.
-          LogLevel VERBOSE
-          # Use kernel sandbox mechanisms where possible in unprivileged processes
-          # Systrace on OpenBSD, Seccomp on Linux, seatbelt on MacOSX/Darwin, rlimit elsewhere.
-          # Note: This setting is deprecated in OpenSSH 7.5 (https://www.openssh.com/txt/release-7.5)
-          # UsePrivilegeSeparation sandbox
-          ########################################################################################################
-          # end settings from https://infosec.mozilla.org/guidelines/openssh#modern-openssh-67 as of 2019-01-01
-          ########################################################################################################
-          # don't let users set environment variables
-          PermitUserEnvironment no
-          # only use the newer, more secure protocol
-          Protocol 2
-          # disable port forwarding
-          AllowTcpForwarding no
-          AllowStreamLocalForwarding no
-          GatewayPorts no
-          PermitTunnel no
-          # don't allow login if the account has an empty password
-          PermitEmptyPasswords no
-          # ignore .rhosts and .shosts
-          IgnoreRhosts yes
-          # verify hostname matches IP
-          UseDNS yes
-          Compression no
-          TCPKeepAlive no
-          AllowAgentForwarding no
-          # don't allow .rhosts or /etc/hosts.equiv
-          HostbasedAuthentication no
-      notify: restart ssh service
+- name: Derive OpenSSH capability flags
+  ansible.builtin.set_fact:
+    ssh_version_major: "{{ ssh_version_text | regex_search('OpenSSH_([0-9]+)', '\\1') | first | int }}"
+    ssh_version_minor: "{{ ssh_version_text | regex_search('OpenSSH_[0-9]+\\.([0-9]+)', '\\1') | first | int }}"
 
-    - name: secure ssh configuration part 2
-      become: true
-      lineinfile:
-        dest: /etc/ssh/sshd_config
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^AllowGroups', line: 'AllowGroups sshusers' }
-        - { regexp: '^ClientAliveCountMax', line: 'ClientAliveCountMax 0'}
-        - { regexp: '^ClientAliveInterval', line: 'ClientAliveInterval 300'}
-        - { regexp: '^ListenAddress', line: 'ListenAddress 0.0.0.0'}
-        - { regexp: '^LoginGraceTime', line: 'LoginGraceTime 30'}
-        - { regexp: '^MaxAuthTries', line: 'MaxAuthTries 2'}
-        - { regexp: '^MaxSessions', line: 'MaxSessions 2'}
-        - { regexp: '^MaxStartups', line: 'MaxStartups 2'}
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no'}
-        - { regexp: '^Port', line: 'Port {{ ssh_port }}'}
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no'}
-        - { regexp: '^X11Forwarding', line: 'X11Forwarding no'}
-        - { regexp: '^Subsystem', line: 'Subsystem sftp  internal-sftp -f AUTHPRIV -l INFO'}
-      notify: restart ssh service
+- name: Set OpenSSH feature flags
+  ansible.builtin.set_fact:
+    ssh_supports_pq_kex: "{{ (ssh_version_major | int > 9) or (ssh_version_major | int == 9) }}"
+    ssh_supports_required_rsa_size: "{{ (ssh_version_major | int > 9) or (ssh_version_major | int == 9 and ssh_version_minor | int >= 1) }}"
 
-    - name: remove short diffie diffie-hellman
-      become: true
-      shell:
-        creates: /etc/ssh/moduli.short
-        cmd: |
-          cp /etc/ssh/moduli /etc/ssh/moduli.short
-          awk '$5 >= 3071' /etc/ssh/moduli | tee /etc/ssh/moduli.tmp
-          if ! cmp /etc/ssh/moduli /etc/ssh/moduli.tmp; then
-            mv /etc/ssh/moduli.tmp /etc/ssh/moduli
-          fi
-      notify: restart ssh service
-      register: moduli_changed
-      changed_when: "'differ:' in moduli_changed.stdout"
+- name: Build the effective KEX list
+  ansible.builtin.set_fact:
+    ssh_kex_algorithms_effective: >-
+      {{ (['sntrup761x25519-sha512@openssh.com']
+          if (ssh_enable_pq_kex | bool and ssh_supports_pq_kex | bool) else [])
+         + ssh_kex_algorithms }}
+
+- name: Detect whether ssh.socket is active
+  ansible.builtin.command: systemctl is-active ssh.socket
+  register: ssh_socket_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Record the ssh.socket state
+  ansible.builtin.set_fact:
+    ssh_socket_active: "{{ ssh_socket_status.stdout | trim == 'active' }}"
+
+- name: Ensure sshd_config includes the drop-in directory
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^Include\s+/etc/ssh/sshd_config\.d/\*\.conf'
+    line: 'Include /etc/ssh/sshd_config.d/*.conf'
+    insertbefore: BOF
+    firstmatch: true
+    state: present
+    backup: true
+  notify: restart ssh service
+
+- name: Remove the legacy managed block from sshd_config
+  ansible.builtin.blockinfile:
+    path: /etc/ssh/sshd_config
+    marker: '# {mark} ANSIBLE MANAGED BLOCK'
+    state: absent
+  notify: restart ssh service
+
+- name: Deploy the SSH hardening drop-in
+  ansible.builtin.template:
+    src: 00-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+    validate: 'sshd -t -f %s'
+  notify: restart ssh service
+
+- name: Ensure the ssh.socket drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/ssh.socket.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: ssh_socket_active | bool
+
+- name: Configure the ssh.socket port when socket activation is used
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ssh.socket.d/10-ansible.conf
+    content: |
+      [Socket]
+      ListenStream=
+      ListenStream={{ ssh_port }}
+    owner: root
+    group: root
+    mode: '0644'
+  when: ssh_socket_active | bool
+  notify:
+    - reload systemd
+    - restart ssh socket
+
+- name: Validate the assembled sshd configuration
+  ansible.builtin.command: sshd -t
+  changed_when: false
+  check_mode: false
+
+- name: Remove short Diffie-Hellman moduli
+  ansible.builtin.shell: |
+    set -euo pipefail
+    awk '$5 >= 3071' /etc/ssh/moduli > /etc/ssh/moduli.tmp
+    if cmp -s /etc/ssh/moduli /etc/ssh/moduli.tmp; then
+      rm -f /etc/ssh/moduli.tmp
+      echo unchanged
+    else
+      mv /etc/ssh/moduli.tmp /etc/ssh/moduli
+      echo changed
+    fi
+  args:
+    executable: /bin/bash
+  register: moduli_result
+  changed_when: "'changed' in moduli_result.stdout"
+  notify: restart ssh service

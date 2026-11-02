@@ -1,0 +1,262 @@
+---
+# Shared defaults for every host.
+# Per-host overrides belong in host_vars/<host>.yml.
+# Secrets belong in ansible-vault encrypted values, never here.
+#
+#   ansible-vault encrypt_string --name 'ansible_password' 'secret'
+
+# ---------------------------------------------------------------------------
+# Bootstrap / identity
+# ---------------------------------------------------------------------------
+# The account created by requirements-playbook.yml and used by main-playbook.yml.
+user_name: ansible
+user_pw: ""                       # vault this; only used when the account is created
+sshpub_location: ""               # local path to a public key
+ssh_public_key: ""                # or inline public key content
+ssh_authorized_keys_exclusive: false
+sudo_nopasswd: false              # keep false; NOPASSWD violates least privilege
+sudo_timestamp_timeout: 15
+sudo_logfile: /var/log/sudo.log
+
+# ---------------------------------------------------------------------------
+# Feature selection
+# ---------------------------------------------------------------------------
+# Every role has a matching Ansible tag, so you can also use --tags / --skip-tags.
+harden_features:
+  packages: true
+  system: true
+  ntp: true
+  logging: true
+  mail: true
+  notify: true
+  ssh: true
+  password_policy: true
+  unattended_upgrades: true
+  firewall: true
+  clamav: true
+  rkhunter: true
+  integrity: true
+  auditd: true
+  lynis: true
+  mfa: false
+
+# Optional roles that fail are reported and the play continues. Keep false
+# for security-critical roles in production.
+harden_continue_on_error: false
+harden_serial: "100%"
+
+# ---------------------------------------------------------------------------
+# Mail / notifications
+# ---------------------------------------------------------------------------
+# Empty mail_to disables every mail-dependent feature automatically.
+mail_to: ""
+mail_from: "root@{{ ansible_fqdn }}"
+mail_smtp_server: ""
+mail_port: 587
+mail_tls: true
+mail_tls_starttls: true
+mail_auth: true
+mail_user: "{{ mail_from }}"
+mail_pw: ""                       # vault this
+mail_send_test: true
+mail_enabled: "{{ (harden_features.mail | default(true) | bool) and (mail_to | length > 0) }}"
+
+# ---------------------------------------------------------------------------
+# Notifications (SMTP is optional)
+# ---------------------------------------------------------------------------
+# notify_backend: auto | smtp | webhook | ntfy | gotify | none
+# auto chooses smtp when mail_to is set, otherwise the first configured
+# webhook/ntfy/gotify target, otherwise local-only logging.
+notify_backend: auto
+notify_webhook_url: ""
+notify_webhook_field: text        # use "content" for Discord
+notify_ntfy_url: "https://ntfy.sh"
+notify_ntfy_topic: ""
+notify_ntfy_token: ""
+notify_gotify_url: ""
+notify_gotify_token: ""
+notify_subject_prefix: "[harden]"
+notify_test: false
+notify_reboot_notice: true
+notify_backend_effective: >-
+  {{ notify_backend if notify_backend != 'auto' else (
+       'smtp' if mail_enabled | bool else (
+         'webhook' if notify_webhook_url | length > 0 else (
+           'ntfy' if notify_ntfy_topic | length > 0 else (
+             'gotify' if notify_gotify_url | length > 0 else 'none'
+           )
+         )
+       )
+     ) }}
+notify_enabled: "{{ (harden_features.notify | default(true) | bool) and (notify_backend_effective != 'none') }}"
+
+# ---------------------------------------------------------------------------
+# SSH
+# ---------------------------------------------------------------------------
+ssh_port: 22
+ssh_address_family: any
+ssh_listen_addresses:
+  - 0.0.0.0
+ssh_allowed_groups:
+  - sshusers
+ssh_permit_root_login: "no"
+ssh_password_authentication: false
+ssh_max_auth_tries: 3
+ssh_max_sessions: 4
+ssh_max_startups: "10:30:60"
+ssh_login_grace_time: 30
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 3
+ssh_use_dns: false
+ssh_compression: false
+ssh_disable_forwarding: true
+ssh_required_rsa_size: 3072
+ssh_mfa_enabled: "{{ harden_features.mfa | default(false) | bool }}"
+ssh_enable_pq_kex: true
+ssh_kex_algorithms:
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - ecdh-sha2-nistp256
+  - ecdh-sha2-nistp384
+  - ecdh-sha2-nistp521
+  - diffie-hellman-group16-sha512
+  - diffie-hellman-group18-sha512
+  - diffie-hellman-group14-sha256
+ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+  - aes256-ctr
+  - aes192-ctr
+  - aes128-ctr
+ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - umac-128-etm@openssh.com
+  - hmac-sha2-512
+  - hmac-sha2-256
+ssh_host_key_algorithms:
+  - ssh-ed25519
+  - rsa-sha2-512
+  - rsa-sha2-256
+  - ecdsa-sha2-nistp256
+  - ecdsa-sha2-nistp384
+  - ecdsa-sha2-nistp521
+ssh_pubkey_accepted_algorithms: >-
+  {{ ssh_host_key_algorithms + [
+       'sk-ssh-ed25519@openssh.com',
+       'sk-ecdsa-sha2-nistp256@openssh.com'
+     ] }}
+ssh_ca_signature_algorithms: "{{ ssh_host_key_algorithms }}"
+ssh_extra_config: ""
+
+# ---------------------------------------------------------------------------
+# Firewall / IDS
+# ---------------------------------------------------------------------------
+firewall_enabled: true
+firewall_allowed_out_tcp:
+  - 43
+  - 53
+  - 80
+  - 443
+firewall_allowed_out_udp:
+  - 53
+  - 67
+  - 68
+  - 123
+firewall_mail_port: "{{ mail_port }}"
+firewall_ufw_logging: low
+psad_enabled: true
+psad_enable_auto_ids: true
+psad_auto_ids_danger_level: 5
+fail2ban_enabled: true
+fail2ban_maxretry: 5
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_ignoreip:
+  - 127.0.0.1/8
+
+# ---------------------------------------------------------------------------
+# Packages / updates
+# ---------------------------------------------------------------------------
+packages_upgrade_enabled: true
+packages_upgrade: safe
+unattended_upgrades_enabled: true
+unattended_upgrades_automatic_reboot: true
+unattended_upgrades_reboot_time: "03:30"
+unattended_upgrades_remove_unused: true
+unattended_upgrades_mail: "{{ mail_to if mail_enabled | bool else '' }}"
+ubuntu_pro_token: ""
+
+# ---------------------------------------------------------------------------
+# Password policy / lockout (NIST SP 800-63B-4 aligned)
+# ---------------------------------------------------------------------------
+password_minlen: 15
+password_difok: 3
+password_retry: 3
+password_dictcheck: true
+password_usercheck: true
+password_gecoscheck: true
+password_enforcing: true
+faillock_enabled: true
+faillock_deny: 5
+faillock_unlock_time: 900
+faillock_fail_interval: 900
+faillock_audit: true
+
+# ---------------------------------------------------------------------------
+# System hardening
+# ---------------------------------------------------------------------------
+sysctl_settings:
+  kernel.randomize_va_space: 2
+  kernel.kptr_restrict: 2
+  kernel.dmesg_restrict: 1
+  kernel.yama.ptrace_scope: 1
+  kernel.unprivileged_bpf_disabled: 1
+  net.core.bpf_jit_harden: 2
+  kernel.perf_event_paranoid: 3
+  fs.protected_hardlinks: 1
+  fs.protected_symlinks: 1
+  fs.protected_fifos: 2
+  fs.protected_regular: 2
+  fs.suid_dumpable: 0
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.tcp_syncookies: 1
+  net.ipv4.tcp_rfc1337: 1
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.all.accept_ra: 0
+  net.ipv6.conf.all.router_solicitations: 0
+  net.ipv6.conf.all.use_tempaddr: 2
+  net.ipv6.conf.default.use_tempaddr: 2
+  vm.mmap_min_addr: 65536
+  vm.swappiness: 10
+  kernel.core_uses_pid: 1
+  kernel.core_pattern: "|/bin/false"
+umask_value: "027"
+login_defs_pass_max_days: 365
+login_defs_pass_min_days: 1
+login_defs_pass_warn_age: 14
+kernel_modules_blacklist:
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - udf
+  - dccp
+  - sctp
+  - rds
+  - tipc
+mount_tmp_hardening: true
+mount_var_tmp_hardening: true
+mount_dev_shm_hardening: true
+mount_home_hardening: true
+proc_hidepid: 0

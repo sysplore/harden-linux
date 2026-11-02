@@ -1,0 +1,158 @@
+#!/bin/bash
+# {{ ansible_managed }}
+set -u
+
+CONFIG={{ notify_config_path | default('/etc/harden-notify.conf') | quote }}
+if [ -r "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+
+LOG_FILE="${LOG_FILE:-/var/log/harden/notify.log}"
+SUBJECT_PREFIX="${SUBJECT_PREFIX:-}"
+BACKEND="${BACKEND:-none}"
+
+subject=""
+body=""
+body_file=""
+use_stdin=0
+skip_empty=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --subject)
+      subject="${2:-}"
+      shift 2
+      ;;
+    --body)
+      body="${2:-}"
+      shift 2
+      ;;
+    --body-file)
+      body_file="${2:-}"
+      shift 2
+      ;;
+    --stdin)
+      use_stdin=1
+      shift
+      ;;
+    --skip-empty)
+      skip_empty=1
+      shift
+      ;;
+    --test)
+      subject="notification test"
+      body="harden-notify is configured and working."
+      shift
+      ;;
+    --help|-h)
+      echo "usage: harden-notify --subject SUBJECT [--body BODY|--body-file FILE|--stdin] [--skip-empty] [--test]"
+      exit 0
+      ;;
+    *)
+      echo "harden-notify: unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ -n "$body_file" ]; then
+  body="$(cat "$body_file" 2>/dev/null || true)"
+fi
+if [ "$use_stdin" -eq 1 ]; then
+  body="$(cat)"
+fi
+
+if [ -z "$subject" ]; then
+  subject="notification"
+fi
+if [ -n "$SUBJECT_PREFIX" ]; then
+  subject="$SUBJECT_PREFIX $subject"
+fi
+
+if [ -z "$body" ] && [ "$skip_empty" -eq 1 ]; then
+  mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+  echo "$(date -Is) skipped-empty: $subject" >> "$LOG_FILE" 2>/dev/null || true
+  exit 0
+fi
+if [ -z "$body" ]; then
+  body="(no details)"
+fi
+
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+log() {
+  printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+case "$BACKEND" in
+  smtp)
+    if [ -z "${MAIL_TO:-}" ]; then
+      log "failed smtp: MAIL_TO is empty"
+      exit 1
+    fi
+    if printf '%s\n' "$body" | timeout 30 /usr/bin/mail -s "$subject" "$MAIL_TO"; then
+      log "sent smtp: $subject"
+    else
+      log "failed smtp: $subject"
+      exit 1
+    fi
+    ;;
+  webhook)
+    if [ -z "${WEBHOOK_URL:-}" ]; then
+      log "failed webhook: URL is empty"
+      exit 1
+    fi
+    payload="$(SUBJECT="$subject" BODY="$body" FIELD="${WEBHOOK_FIELD:-text}" /usr/bin/python3 -c 'import json, os; print(json.dumps({os.environ["FIELD"]: os.environ["SUBJECT"] + "\n" + os.environ["BODY"]}))')"
+    if [ -z "$payload" ]; then
+      log "failed webhook: could not build JSON"
+      exit 1
+    fi
+    if /usr/bin/curl -fsS --connect-timeout 5 --max-time 15 -X POST -H 'Content-Type: application/json' --data "$payload" "$WEBHOOK_URL" >/dev/null; then
+      log "sent webhook: $subject"
+    else
+      log "failed webhook: $subject"
+      exit 1
+    fi
+    ;;
+  ntfy)
+    if [ -z "${NTFY_TOPIC:-}" ]; then
+      log "failed ntfy: topic is empty"
+      exit 1
+    fi
+    url="${NTFY_URL:-https://ntfy.sh}/${NTFY_TOPIC}"
+    if [ -n "${NTFY_TOKEN:-}" ]; then
+      if /usr/bin/curl -fsS --connect-timeout 5 --max-time 15 -H "Title: $subject" -H "Authorization: Bearer $NTFY_TOKEN" --data-binary "$body" "$url" >/dev/null; then
+        log "sent ntfy: $subject"
+      else
+        log "failed ntfy: $subject"
+        exit 1
+      fi
+    else
+      if /usr/bin/curl -fsS --connect-timeout 5 --max-time 15 -H "Title: $subject" --data-binary "$body" "$url" >/dev/null; then
+        log "sent ntfy: $subject"
+      else
+        log "failed ntfy: $subject"
+        exit 1
+      fi
+    fi
+    ;;
+  gotify)
+    if [ -z "${GOTIFY_URL:-}" ] || [ -z "${GOTIFY_TOKEN:-}" ]; then
+      log "failed gotify: URL or token is empty"
+      exit 1
+    fi
+    if /usr/bin/curl -fsS --connect-timeout 5 --max-time 15 -X POST "${GOTIFY_URL%/}/message?token=${GOTIFY_TOKEN}" -F "title=$subject" -F "message=$body" >/dev/null; then
+      log "sent gotify: $subject"
+    else
+      log "failed gotify: $subject"
+      exit 1
+    fi
+    ;;
+  none)
+    log "local-only: $subject"
+    ;;
+  *)
+    log "failed: unknown backend '$BACKEND'"
+    exit 1
+    ;;
+esac

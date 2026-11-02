@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# This file is sourced by /usr/local/sbin/harden-notify. Mode 0600.
+BACKEND={{ notify_backend_effective | quote }}
+SUBJECT_PREFIX={{ notify_subject_prefix | quote }}
+LOG_FILE={{ notify_log_file | default('/var/log/harden/notify.log') | quote }}
+MAIL_TO={{ mail_to | default('') | quote }}
+WEBHOOK_URL={{ notify_webhook_url | default('') | quote }}
+WEBHOOK_FIELD={{ notify_webhook_field | default('text') | quote }}
+NTFY_URL={{ notify_ntfy_url | default('https://ntfy.sh') | quote }}
+NTFY_TOPIC={{ notify_ntfy_topic | default('') | quote }}
+NTFY_TOKEN={{ notify_ntfy_token | default('') | quote }}
+GOTIFY_URL={{ notify_gotify_url | default('') | quote }}
+GOTIFY_TOKEN={{ notify_gotify_token | default('') | quote }}

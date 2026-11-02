@@ -1,0 +1,70 @@
+# {{ ansible_managed }}
+# SSH hardening. This file is read before the main sshd_config because the
+# Include directive is placed at the top of /etc/ssh/sshd_config.
+
+Port {{ ssh_port }}
+AddressFamily {{ ssh_address_family }}
+{% for address in ssh_listen_addresses %}
+ListenAddress {{ address }}
+{% endfor %}
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+
+KexAlgorithms {{ ssh_kex_algorithms_effective | join(',') }}
+Ciphers {{ ssh_ciphers | join(',') }}
+MACs {{ ssh_macs | join(',') }}
+HostKeyAlgorithms {{ ssh_host_key_algorithms | join(',') }}
+PubkeyAcceptedAlgorithms {{ ssh_pubkey_accepted_algorithms | join(',') }}
+CASignatureAlgorithms {{ ssh_ca_signature_algorithms | join(',') }}
+{% if ssh_supports_required_rsa_size | bool %}
+RequiredRSASize {{ ssh_required_rsa_size }}
+{% endif %}
+
+LogLevel VERBOSE
+LoginGraceTime {{ ssh_login_grace_time }}
+MaxAuthTries {{ ssh_max_auth_tries }}
+MaxSessions {{ ssh_max_sessions }}
+MaxStartups {{ ssh_max_startups }}
+ClientAliveInterval {{ ssh_client_alive_interval }}
+ClientAliveCountMax {{ ssh_client_alive_count_max }}
+
+PermitRootLogin {{ ssh_permit_root_login }}
+PasswordAuthentication {{ 'yes' if ssh_password_authentication | bool else 'no' }}
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+PermitUserEnvironment no
+PermitUserRC no
+HostbasedAuthentication no
+IgnoreRhosts yes
+UsePAM yes
+UseDNS {{ 'yes' if ssh_use_dns | bool else 'no' }}
+Compression {{ 'yes' if ssh_compression | bool else 'no' }}
+TCPKeepAlive no
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+GatewayPorts no
+PermitTunnel no
+DisableForwarding {{ 'yes' if ssh_disable_forwarding | bool else 'no' }}
+GSSAPIAuthentication no
+KerberosAuthentication no
+AllowGroups {{ ssh_allowed_groups | join(' ') }}
+Subsystem sftp internal-sftp -f AUTHPRIV -l INFO
+
+{% if ssh_mfa_enabled | bool %}
+KbdInteractiveAuthentication yes
+AuthenticationMethods publickey,keyboard-interactive
+{% elif ssh_password_authentication | bool %}
+KbdInteractiveAuthentication no
+AuthenticationMethods publickey,password
+{% else %}
+KbdInteractiveAuthentication no
+AuthenticationMethods publickey
+{% endif %}
+
+{% if ssh_extra_config | length > 0 %}
+{{ ssh_extra_config }}
+{% endif %}

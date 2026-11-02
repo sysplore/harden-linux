@@ -1,0 +1,13 @@
+---
+password_minlen: 15
+password_difok: 3
+password_retry: 3
+password_dictcheck: true
+password_usercheck: true
+password_gecoscheck: true
+password_enforcing: true
+faillock_enabled: true
+faillock_deny: 5
+faillock_unlock_time: 900
+faillock_fail_interval: 900
+faillock_audit: true

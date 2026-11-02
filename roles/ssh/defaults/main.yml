@@ -1,0 +1,55 @@
+---
+ssh_service_name: ssh
+ssh_socket_name: ssh.socket
+ssh_port: 22
+ssh_address_family: any
+ssh_listen_addresses:
+  - 0.0.0.0
+ssh_allowed_groups:
+  - sshusers
+ssh_permit_root_login: "no"
+ssh_password_authentication: false
+ssh_mfa_enabled: false
+ssh_max_auth_tries: 3
+ssh_max_sessions: 4
+ssh_max_startups: "10:30:60"
+ssh_login_grace_time: 30
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 3
+ssh_use_dns: false
+ssh_compression: false
+ssh_disable_forwarding: true
+ssh_required_rsa_size: 3072
+ssh_enable_pq_kex: true
+ssh_kex_algorithms:
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - ecdh-sha2-nistp256
+  - ecdh-sha2-nistp384
+  - ecdh-sha2-nistp521
+  - diffie-hellman-group16-sha512
+  - diffie-hellman-group18-sha512
+  - diffie-hellman-group14-sha256
+ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+  - aes256-ctr
+  - aes192-ctr
+  - aes128-ctr
+ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - umac-128-etm@openssh.com
+  - hmac-sha2-512
+  - hmac-sha2-256
+ssh_host_key_algorithms:
+  - ssh-ed25519
+  - rsa-sha2-512
+  - rsa-sha2-256
+  - ecdsa-sha2-nistp256
+  - ecdsa-sha2-nistp384
+  - ecdsa-sha2-nistp521
+ssh_pubkey_accepted_algorithms: "{{ ssh_host_key_algorithms + ['sk-ssh-ed25519@openssh.com', 'sk-ecdsa-sha2-nistp256@openssh.com'] }}"
+ssh_ca_signature_algorithms: "{{ ssh_host_key_algorithms }}"
+ssh_extra_config: ""

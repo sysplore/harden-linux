@@ -1,0 +1,21 @@
+---
+- name: Install the Google Authenticator PAM module
+  ansible.builtin.apt:
+    name: libpam-google-authenticator
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Require TOTP for SSH logins
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/sshd
+    insertbefore: '^@include common-auth'
+    line: 'auth required pam_google_authenticator.so nullok'
+    state: present
+    backup: true
+
+- name: MFA enrollment reminder
+  ansible.builtin.debug:
+    msg: >-
+      MFA is enabled with nullok. Log in as each user and run `google-authenticator`
+      to enroll, then remove `nullok` from /etc/pam.d/sshd to make MFA mandatory.

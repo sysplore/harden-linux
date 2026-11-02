@@ -1,8 +1,92 @@
+---
+- name: Remove the distribution audit rules
+  ansible.builtin.file:
+    path: /etc/audit/rules.d/audit.rules
+    state: absent
+  when: auditd_remove_default_rules | bool
 
-    - name: remove default auditd rules and download best practice rules
-      become: true
-      shell: |
-        rm /etc/audit/rules.d/audit.rules
-        wget -P /etc/audit/rules.d/ https://raw.githubusercontent.com/Neo23x0/auditd/master/audit.rules
-        service auditd restart
+- name: Install the pinned Neo23x0 audit rules
+  ansible.builtin.get_url:
+    url: "{{ auditd_rules_url }}"
+    dest: /etc/audit/rules.d/99-neo23x0.rules
+    checksum: "{{ auditd_rules_checksum }}"
+    owner: root
+    group: root
+    mode: '0640'
+    retries: 3
+    delay: 5
 
+- name: Watch security-critical paths
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/99-zzz-local.rules
+    content: |
+      # Managed by Ansible
+      -w /etc/sudoers -p wa -k sudoers
+      -w /etc/sudoers.d/ -p wa -k sudoers
+      -w /etc/passwd -p wa -k identity
+      -w /etc/shadow -p wa -k identity
+      -w /etc/group -p wa -k identity
+      -w /etc/gshadow -p wa -k identity
+      -w /etc/ssh/sshd_config -p wa -k sshd
+      -w /etc/ssh/sshd_config.d/ -p wa -k sshd
+      -w /etc/pam.d/ -p wa -k pam
+      -w /etc/audit/ -p wa -k audit
+      -w /etc/systemd/ -p wa -k systemd
+    owner: root
+    group: root
+    mode: '0640'
+
+- name: Make the audit rules immutable
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/99-zzzz-immutable.rules
+    content: |
+      # Managed by Ansible
+      -e 2
+    owner: root
+    group: root
+    mode: '0640'
+  when: auditd_immutable | bool
+
+- name: Remove the immutable rules file when immutability is disabled
+  ansible.builtin.file:
+    path: /etc/audit/rules.d/99-zzzz-immutable.rules
+    state: absent
+  when: not (auditd_immutable | bool)
+  notify: restart auditd
+
+- name: Configure the audit daemon
+  ansible.builtin.lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: "^{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+    state: present
+    backup: true
+  loop:
+    - { key: max_log_file, value: "{{ auditd_max_log_file }}" }
+    - { key: num_logs, value: "{{ auditd_num_logs }}" }
+    - { key: max_log_file_action, value: rotate }
+    - { key: space_left_action, value: "{{ 'email' if mail_enabled | bool else 'syslog' }}" }
+    - { key: admin_space_left_action, value: single }
+    - { key: disk_full_action, value: single }
+    - { key: disk_error_action, value: syslog }
+    - { key: flush, value: incremental_async }
+    - { key: freq, value: 50 }
+  loop_control:
+    label: "{{ item.key }}"
+  notify: restart auditd
+
+- name: Enable and start auditd
+  ansible.builtin.systemd:
+    name: auditd
+    enabled: true
+    state: started
+
+- name: Read the audit subsystem state
+  ansible.builtin.command: auditctl -s
+  register: audit_status
+  changed_when: false
+  failed_when: false
+
+- name: Load the audit rules
+  ansible.builtin.command: augenrules --load
+  when: "'enabled 2' not in (audit_status.stdout | default(''))"

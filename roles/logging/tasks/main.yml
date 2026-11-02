@@ -1,0 +1,134 @@
+---
+- name: Configure persistent journald storage
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    backup: true
+  loop:
+    - { regexp: '^#?Storage=', line: 'Storage={{ journald_storage }}' }
+    - { regexp: '^#?Compress=', line: 'Compress=yes' }
+    - { regexp: '^#?SystemMaxUse=', line: 'SystemMaxUse={{ journald_system_max_use }}' }
+    - { regexp: '^#?MaxRetentionSec=', line: 'MaxRetentionSec={{ journald_max_retention }}' }
+    - { regexp: '^#?RateLimitIntervalSec=', line: 'RateLimitIntervalSec={{ journald_rate_limit_interval }}' }
+    - { regexp: '^#?RateLimitBurst=', line: 'RateLimitBurst={{ journald_rate_limit_burst }}' }
+    - { regexp: '^#?ForwardToSyslog=', line: 'ForwardToSyslog=yes' }
+  loop_control:
+    label: "{{ item.regexp }}"
+  notify: restart journald
+
+- name: Install rsyslog
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Send iptables/UFW logs to a dedicated file
+  ansible.builtin.copy:
+    dest: /etc/rsyslog.d/49-iptables.conf
+    content: |
+      :msg, contains, "[IPTABLES]" -/var/log/iptables.log
+      & stop
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart rsyslog
+
+- name: Rotate iptables logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/iptables
+    content: |
+      /var/log/iptables.log {
+          weekly
+          rotate 12
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 root adm
+          sharedscripts
+          postrotate
+              /usr/lib/rsyslog/rsyslog-rotate
+          endscript
+      }
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Rotate msmtp logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/msmtp
+    content: |
+      /var/log/msmtp {
+          weekly
+          rotate 8
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 root adm
+      }
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Rotate sudo logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/sudo
+    content: |
+      /var/log/sudo.log {
+          weekly
+          rotate 12
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0600 root root
+      }
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable and start rsyslog
+  ansible.builtin.systemd:
+    name: rsyslog
+    enabled: true
+    state: started
+
+- name: Create logwatch config directory
+  ansible.builtin.file:
+    path: /etc/logwatch/conf
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: logwatch_enabled | bool
+
+- name: Configure logwatch
+  ansible.builtin.copy:
+    dest: /etc/logwatch/conf/logwatch.conf
+    content: |
+      MailTo = {{ mail_to }}
+      MailFrom = {{ mail_from }}
+      Detail = {{ logwatch_detail }}
+      Range = yesterday
+      Service = All
+      Format = html
+      Output = stdout
+    owner: root
+    group: root
+    mode: '0644'
+  when: logwatch_enabled | bool
+
+- name: Schedule the daily logwatch report
+  ansible.builtin.cron:
+    name: logwatch daily report
+    user: root
+    hour: '4'
+    minute: '0'
+    job: >-
+      /usr/sbin/logwatch --output stdout --detail {{ logwatch_detail }} 2>&1 |
+      /usr/local/sbin/harden-notify --subject 'Logwatch: $(hostname)' --stdin --skip-empty
+  when: logwatch_enabled | bool

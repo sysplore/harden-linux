@@ -1,41 +1,89 @@
+---
+- name: Create the local rkhunter configuration
+  ansible.builtin.copy:
+    src: /etc/rkhunter.conf
+    dest: /etc/rkhunter.conf.local
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: '0644'
 
-    - name: copy rkhunter's default config file
-      become: true
-      shell: cp -p /etc/rkhunter.conf /etc/rkhunter.conf.local
+- name: Decide whether rkhunter uses native mail
+  ansible.builtin.set_fact:
+    rkhunter_native_mail: >-
+      {{ (rkhunter_notify | bool)
+         and (notify_backend_effective | default('none') == 'smtp')
+         and (mail_enabled | default(false) | bool) }}
 
-    - name: configure rkhunter
-      become: true
-      lineinfile:
-        dest: /etc/rkhunter.conf.local
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^UPDATE_MIRRORS', line: 'UPDATE_MIRRORS=1' }
-        - { regexp: '^MIRRORS_MODE', line: 'MIRRORS_MODE=0'}
-        - { regexp: '^MAIL-ON-WARNING', line: 'MAIL-ON-WARNING={{ mail_to }}'}
-        - { regexp: '^COPY_LOG_ON_ERROR', line: 'COPY_LOG_ON_ERROR=1'}
-        - { regexp: '^PHALANX2_DIRTEST', line: 'PHALANX2_DIRTEST=1'}
-        - { regexp: '^WEB_CMD', line: 'WEB_CMD=""'}
-        - { regexp: '^USE_LOCKING', line: 'USE_LOCKING=1'}
-        - { regexp: '^SHOW_SUMMARY_WARNINGS_NUMBER', line: 'SHOW_SUMMARY_WARNINGS_NUMBER=1'}
+- name: Configure rkhunter
+  ansible.builtin.lineinfile:
+    path: /etc/rkhunter.conf.local
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    backup: true
+  loop:
+    - { regexp: '^UPDATE_MIRRORS', line: 'UPDATE_MIRRORS=1' }
+    - { regexp: '^MIRRORS_MODE', line: 'MIRRORS_MODE=0' }
+    - { regexp: '^COPY_LOG_ON_ERROR', line: 'COPY_LOG_ON_ERROR=1' }
+    - { regexp: '^PHALANX2_DIRTEST', line: 'PHALANX2_DIRTEST=1' }
+    - { regexp: '^WEB_CMD', line: 'WEB_CMD=""' }
+    - { regexp: '^USE_LOCKING', line: 'USE_LOCKING=1' }
+    - { regexp: '^SHOW_SUMMARY_WARNINGS_NUMBER', line: 'SHOW_SUMMARY_WARNINGS_NUMBER=1' }
+    - regexp: '^MAIL-ON-WARNING'
+      line: 'MAIL-ON-WARNING={{ mail_to if rkhunter_native_mail | bool else "" }}'
+  loop_control:
+    label: "{{ item.regexp }}"
 
-    - name: configure rkhunter pt. 2
-      become: true
-      lineinfile:
-        dest: /etc/default/rkhunter
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^CRON_DAILY_RUN', line: 'CRON_DAILY_RUN="true"' }
-        - { regexp: '^CRON_DB_UPDATE', line: 'CRON_DB_UPDATE="true"' }
-        - { regexp: '^DB_UPDATE_EMAIL', line: 'DB_UPDATE_EMAIL="false"' }
-        - { regexp: '^REPORT_EMAIL', line: 'REPORT_EMAIL="root"' }
-        - { regexp: '^APT_AUTOGEN', line: 'APT_AUTOGEN="true"' }
-        - { regexp: '^NICE', line: 'NICE="0"' }
-        - { regexp: '^RUN_CHECK_ON_BATTERY', line: 'RUN_CHECK_ON_BATTERY="false"' }
+- name: Configure the rkhunter cron defaults
+  ansible.builtin.lineinfile:
+    path: /etc/default/rkhunter
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    backup: true
+  loop:
+    - regexp: '^CRON_DAILY_RUN'
+      line: >-
+        CRON_DAILY_RUN="{{ 'true' if (rkhunter_cron_daily | bool)
+        and ((rkhunter_native_mail | bool)
+        or not (rkhunter_notify | bool and notify_enabled | default(false) | bool))
+        else 'false' }}"
+    - { regexp: '^CRON_DB_UPDATE', line: 'CRON_DB_UPDATE="true"' }
+    - regexp: '^DB_UPDATE_EMAIL'
+      line: 'DB_UPDATE_EMAIL="{{ "true" if rkhunter_native_mail | bool else "false" }}"'
+    - regexp: '^REPORT_EMAIL'
+      line: 'REPORT_EMAIL="{{ "root" if rkhunter_native_mail | bool else "" }}"'
+    - { regexp: '^APT_AUTOGEN', line: 'APT_AUTOGEN="true"' }
+    - { regexp: '^NICE', line: 'NICE="0"' }
+    - { regexp: '^RUN_CHECK_ON_BATTERY', line: 'RUN_CHECK_ON_BATTERY="false"' }
+  loop_control:
+    label: "{{ item.regexp }}"
 
-    - name: update rkhunter
-      become: true
-      shell: |
-        rkhunter --update
-        rkhunter --propupd
+- name: Schedule rkhunter with the notification backend
+  ansible.builtin.cron:
+    name: rkhunter daily scan
+    user: root
+    hour: '3'
+    minute: '45'
+    job: >-
+      /usr/sbin/rkhunter --cronjob --report-warnings-only 2>&1 |
+      /usr/local/sbin/harden-notify --subject 'rkhunter warnings: $(hostname)' --stdin --skip-empty
+  when:
+    - rkhunter_cron_daily | bool
+    - rkhunter_notify | bool
+    - notify_enabled | default(false) | bool
+    - not (rkhunter_native_mail | bool)
+
+- name: Update rkhunter signatures
+  ansible.builtin.command: rkhunter --update
+  changed_when: false
+  failed_when: false
+  retries: 2
+  delay: 5
+
+- name: Refresh the rkhunter file properties database
+  ansible.builtin.command: rkhunter --propupd
+  changed_when: false
+  failed_when: false

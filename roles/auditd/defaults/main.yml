@@ -1,0 +1,7 @@
+---
+auditd_rules_url: "https://raw.githubusercontent.com/Neo23x0/auditd/6111069472c26c4120002933b67cef9855dfbad5/audit.rules"
+auditd_rules_checksum: "sha256:922b43e7b7c4ce386749a0e63c3a228a13854277de2ef092eddb536a8fa4142e"
+auditd_immutable: true
+auditd_remove_default_rules: true
+auditd_max_log_file: 50
+auditd_num_logs: 10

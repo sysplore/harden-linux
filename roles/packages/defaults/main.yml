@@ -1,0 +1,47 @@
+---
+packages_core:
+  - ca-certificates
+  - curl
+  - wget
+  - apparmor
+  - apparmor-utils
+  - apt-listchanges
+packages_updates:
+  - unattended-upgrades
+packages_ntp:
+  - systemd-timesyncd
+packages_logging:
+  - rsyslog
+  - logwatch
+packages_firewall:
+  - ufw
+  - fail2ban
+  - psad
+packages_password:
+  - libpam-pwquality
+  - cracklib-runtime
+packages_mail:
+  - msmtp
+  - msmtp-mta
+  - mailutils
+  - apticron
+  - whois
+packages_lynis:
+  - lynis
+  - python3-ansi2html
+packages_clamav:
+  - clamav
+  - clamav-daemon
+  - clamav-freshclam
+packages_rkhunter:
+  - rkhunter
+packages_auditd:
+  - auditd
+  - audispd-plugins
+packages_integrity:
+  - aide
+  - aide-common
+  - debsums
+packages_mfa:
+  - libpam-google-authenticator
+packages_selected: []

@@ -1,129 +1,247 @@
-# How To Secure A Linux Server With Ansible
-Ansible playbooks of ["How To Secure A Linux Server"](https://github.com/imthenachoman/How-To-Secure-A-Linux-Server).
+# Harden Linux
 
-These Ansible playbooks are made to help install secure Linux servers faster.
+Ansible roles for hardening Debian and Ubuntu servers, designed to be run
+directly from the CLI or from [Semaphore UI](docs/semaphore.md).
 
-## How to get started
-1. Install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)
-2. git clone this repository
-  ```
-  git clone https://github.com/moltenbit/How-To-Secure-A-Linux-Server-With-Ansible
-  cd How-To-Secure-A-Linux-Server-With-Ansible
-  ```
- 
-4. [Create SSH-Public/Private-Keys](https://github.com/imthenachoman/How-To-Secure-A-Linux-Server#ssh-publicprivate-keys)
-  ```
-  ssh-keygen -t ed25519
-  ```
-   
-5. Change all variables in *group_vars/variables.yml* according to your needs.
-6. Enable SSH root access before running the playbooks:
-   
-  ```
-  nano /etc/ssh/sshd_config
-  [...]
-  PermitRootLogin yes
-  [...]
-  ```
+The hardening logic lives in this repository. Semaphore is the inventory,
+credential, execution and scheduling plane. There is no second web app and no
+second credential store.
 
-7. Recommended: configure static IP address on your system.
-8. Add your systems IP address to *hosts.yml*.
+## Supported platforms
 
-&nbsp;
+- Debian 12 (Bookworm) and Debian 13 (Trixie)
+- Ubuntu 22.04 LTS and later (including 24.04 and 26.04 LTS)
 
-Run the requirements playbook using the root password you specified while installing the server:
+## What it does
 
-    ansible-playbook --inventory hosts.yml --ask-pass requirements-playbook.yml
+| Area | Role | Highlights |
+|---|---|---|
+| Packages | `packages` | Debian/Ubuntu aware, optional upgrade, minimal package set |
+| Kernel / system | `system_hardening` | sysctl, ASLR, kptr/dmesg restrictions, login.defs, umask, mount hardening, module blacklist |
+| Time | `ntp` | systemd-timesyncd, verified synchronization |
+| Logging | `logging` | persistent journald, rsyslog, iptables log separation, logrotate, logwatch |
+| SSH | `ssh` | drop-in config, key-only auth, MFA-ready, modern KEX/ciphers/MACs, `sshd -t` validation |
+| Passwords / lockout | `password_quality` | pwquality (NIST 800-63B-4 aligned), faillock |
+| Updates | `unattended_upgrades` | distro-specific security origins, conffile-safe upgrades, reboot window |
+| Firewall / IDS | `firewall` | UFW default-deny, psad, fail2ban, notifications |
+| Mail | `mail` | msmtp, aliases, non-fatal test message |
+| Notifications | `notify` | SMTP, webhook, ntfy, Gotify, local-only |
+| Malware | `clamav`, `rkhunter` | scheduled scans, logs, notifications |
+| Integrity | `integrity` | AIDE database and daily check |
+| Audit | `auditd` | pinned Neo23x0 rules, local watches, immutable rules |
+| Audit report | `lynis` | HTML report, local retention or notifications |
+| Bootstrap | `requirements` | sudo user, groups, sudoers drop-ins, su restriction, authorized key |
 
-&nbsp;
+See [AUDIT.md](AUDIT.md) for the security review, NIST/BSI mapping and remaining
+gaps.
 
-Run the main playbook with the new users password you specified in the *variables.yml* file:
+## Quick start (CLI)
 
-    ansible-playbook --inventory hosts.yml --ask-pass main-playbook.yml
+1. Install the tooling:
 
-&nbsp;
+   ```bash
+   pip install ansible-core passlib
+   ansible-galaxy collection install -r requirements.yml
+   ```
 
-If you need to run the playbooks multiple times remember to use the SSH key and the new SSH port:
+2. Create the inventory:
 
-    ansible-playbook --inventory hosts.yml -e ansible_ssh_port=SSH_PORT --key-file /PATH/TO/SSH/KEY main-playbook.yml
+   ```bash
+   cp host_vars/example.yml host_vars/server1.yml
+   ```
 
-&nbsp;
+   Edit `hosts.yml` and add the host under the correct distro group:
 
-Tested on Debian 12 and 13.
+   ```yaml
+   all:
+     children:
+       linux:
+         children:
+           debian:
+             hosts:
+               server1:
+                 ansible_host: 203.0.113.10
+           ubuntu:
+             hosts: {}
+   ```
 
-## Configurations
-The playbook uses most of the settings from ["How To Secure A Linux Server"](https://github.com/imthenachoman/How-To-Secure-A-Linux-Server) / my choices if the guide has more than one option to do something.
+3. Put connection credentials in `host_vars/server1.yml` and encrypt them:
 
-### Requirements
-- sudo installed
-- groups created for *sshusers*, *sudousers* and *suusers*
-- new user created with the name specified in *variables.yml* and added to groups
-- use of sudo limited to sudousers group
-- use of su limited to suusers group
-- passwordless sudo enabled for the new user
-- SSH public key added to authorized_keys file
+   ```bash
+   ansible-vault encrypt_string --name 'ansible_password' 'secret'
+   ```
 
-### auditd
-Uses best practice rules from [Neo23x0](https://github.com/Neo23x0) 
+4. Bootstrap the host:
 
-### ClamAV
-ClamAV is set to run everyday at 3 AM to scan the full system, exluding sys folders.
+   ```bash
+   ansible-playbook -i hosts.yml requirements-playbook.yml --ask-vault-pass
+   ```
 
-### Firewall: UFW
-UFW is set to default deny in and out. 
-The SSH-Port is set to *limit in*, allowed outgoing ports by default are 53 (DNS), 123 (NTP), 80 (http), 443 (https) and the mail port specified in *variables.yml*.
+5. Preview and apply hardening:
 
-### Firewall: PSAD and Fail2Ban
-PSAD and Fail2Ban is configured according to "How To Secure A Linux Server" guide.
+   ```bash
+   ansible-playbook -i hosts.yml main-playbook.yml --ask-vault-pass --check --diff
+   ansible-playbook -i hosts.yml main-playbook.yml --ask-vault-pass
+   ```
 
-### Lynis
-Lynis is configured according to "How To Secure A Linux Server" guide and will run an audit + send the report as an attachment to your mail address configured in *variables.yml*.
-Current Lynis rating is 77.
+6. For later runs, use the `ansible` user and its SSH key instead of a password.
 
-### Mail
-For mailing I chose msmtp with the help from [Decatec's guide](https://decatec.de/linux/linux-einfach-e-mails-versenden-mit-msmtp/). This will send a testmail.
+## Reusable inventory and credentials
 
-### Packages
-Installed packages are:
-- apt-transport-https
-- ca-certificates
-- host
-- libpam-pwquality
-- unattended-upgrades
-- apt-listchanges
-- apticron
-- ufw
-- psad
-- fail2ban
-- msmtp
-- msmtp-mta
-- mailutils
-- clamav
-- clamav-freshclam
-- clamav-daemon
-- rkhunter
-- auditd
-- audispd-plugins
+- `hosts.yml` holds hosts and groups only.
+- `host_vars/<host>.yml` holds per-host connection details and overrides.
+- `group_vars/all.yml` holds shared defaults.
+- `group_vars/debian.yml` and `group_vars/ubuntu.yml` hold distro-specific
+  defaults.
+- Secrets are vaulted or supplied by Semaphore. They are never committed.
 
-### Password quality
-Password quality is done via pam_pwquality according to "How To Secure A Linux Server" guide.
+If you previously used `group_vars/variables.yml`, migrate its values into
+`group_vars/all.yml` and vaulted `host_vars/<host>.yml`. That file was tracked
+in git before this refactor: **rotate any credential that was ever committed**.
+Deleting the file does not remove it from git history.
 
-### Rkhunter
-Rkhunter is configured according to "How To Secure A Linux Server" guide.
+## Feature selection
 
-### SSH
-SSH is configured according to "How To Secure A Linux Server" guide.
+Choose roles per host with `harden_features`:
 
-### Unattended upgrades
-Unattended upgrades is configured to only upgrade security upgrades automatically. Automatic restarts are enabled.
+```yaml
+harden_features:
+  packages: true
+  system: true
+  ntp: true
+  logging: true
+  mail: false
+  notify: true
+  ssh: true
+  password_policy: true
+  unattended_upgrades: true
+  firewall: true
+  clamav: false
+  rkhunter: true
+  integrity: true
+  auditd: true
+  lynis: true
+  mfa: false
+```
 
-## Plans / ToDos
-- [ ] use Ansible vault to securely store secrets
+Every role also has a tag:
 
-## Warning!
-Read all tasks carefully and make sure they do not break your system before using these playbooks! Do not rely solely on the Ansible playbooks for security! It is your responsibility to make sure all settings you need have been set and are working. This is just a starting point! Depending on your needs and goals make sure to further secure your system.
+```bash
+ansible-playbook ... --tags ssh,firewall
+ansible-playbook ... --skip-tags clamav,lynis
+```
+
+## Notifications (SMTP optional)
+
+SMTP is not required. The `notify` role installs
+`/usr/local/sbin/harden-notify` and routes alerts from ClamAV, AIDE, rkhunter,
+Lynis, logwatch, fail2ban and the reboot-required check.
+
+| `notify_backend` | Requires | Behaviour |
+|---|---|---|
+| `auto` | — | SMTP if `mail_to` is set, else webhook, ntfy, gotify, else `none` |
+| `smtp` | `mail_to` + SMTP settings | msmtp/mail |
+| `webhook` | `notify_webhook_url` | JSON POST to a generic endpoint |
+| `ntfy` | `notify_ntfy_topic` | ntfy.sh or self-hosted |
+| `gotify` | URL + token | self-hosted Gotify |
+| `none` | — | local-only log at `/var/log/harden/notify.log` |
+
+Examples:
+
+```yaml
+# Slack
+notify_backend: webhook
+notify_webhook_url: "https://hooks.slack.com/services/..."
+notify_webhook_field: text
+
+# Discord uses "content" instead of "text"
+# notify_webhook_field: content
+
+# ntfy
+notify_backend: ntfy
+notify_ntfy_url: "https://ntfy.sh"
+notify_ntfy_topic: "my-secret-topic"
+# notify_ntfy_token: "..."   # protected topics
+
+# Gotify
+notify_backend: gotify
+notify_gotify_url: "https://gotify.example.com"
+notify_gotify_token: "..."
+
+# No network notifications at all
+notify_backend: none
+```
+
+Test it with:
+
+```bash
+ansible-playbook -i hosts.yml main-playbook.yml --tags notify -e notify_test=true
+# or on the host
+sudo /usr/local/sbin/harden-notify --test
+```
+
+Webhook URLs and tokens are secrets. Vault them or provide them through
+Semaphore; `/etc/harden-notify.conf` is mode `0600`.
+
+If `mail_to` is empty and no webhook/ntfy/gotify target is configured, the
+notifier is installed in local-only mode. Everything still logs locally, and
+the reboot-required check is sent through the configured backend.
+
+`psad` and `unattended-upgrades` keep their native mail hooks. With no SMTP
+they log locally; the notifier covers the reboot-required signal and all other
+alert sources.
+
+If `mail_to` is set, `mail_smtp_server` and `mail_pw` are required and validated
+before the play changes anything.
+
+## Safety
+
+- `sshd`, `sudoers` and `fail2ban` configs are validated before restart.
+- Config edits use `backup: true` where practical.
+- Optional roles can be set to continue on error, but production defaults to
+  failing fast.
+- `auditd` rules are immutable (`-e 2`) until reboot.
+- `proc_hidepid` and mount hardening are opt-in/opt-out and can break agents or
+  applications that execute from `/tmp`; test on a canary host.
+- `password_quality` edits PAM. Test on a canary host; set
+  `faillock_enabled: false` if your release lacks `pam_faillock`.
+- The default sysctl profile disables IPv6 router advertisements. Override
+  `sysctl_settings` if the host uses SLAAC/DHCPv6.
+- Keep a second SSH session open during the first SSH run.
+
+## Semaphore
+
+See [docs/semaphore.md](docs/semaphore.md) for inventory, credentials, task
+templates, schedules and guardrails. To create the project and templates
+automatically, use `scripts/semaphore_bootstrap.py` with `semaphore.env`.
+
+## Verification
+
+```bash
+yamllint .
+ansible-lint
+ansible-playbook --syntax-check -i hosts.yml main-playbook.yml
+ansible-playbook --syntax-check -i hosts.yml requirements-playbook.yml
+```
+
+On a host after a run:
+
+```bash
+sshd -T | grep -E 'permitrootlogin|passwordauthentication|kbdinteractiveauthentication|authenticationmethods'
+ufw status verbose
+systemctl is-active auditd fail2ban psad clamav-freshclam
+/usr/local/sbin/harden-notify --test
+unattended-upgrade --dry-run
+lynis audit system
+```
 
 ## Credits
-- [imthenachoman](https://github.com/imthenachoman) for creating the great [How To Secure A Linux Server](https://github.com/imthenachoman/How-To-Secure-A-Linux-Server) guide
-- [Neo23x0](https://github.com/Neo23x0) for the auditd best practice rules
-- [Decatec](https://decatec.de/linux/linux-einfach-e-mails-versenden-mit-msmtp/) for the easy mail configuration
+
+This project started from
+[How To Secure A Linux Server](https://github.com/imthenachoman/How-To-Secure-A-Linux-Server)
+and its Ansible companion by [moltenbit](https://github.com/moltenbit). The
+audit rules are from [Neo23x0](https://github.com/Neo23x0/auditd).
+
+## License
+
+Documentation is licensed CC BY-SA 4.0. See [LICENSE](LICENSE).
