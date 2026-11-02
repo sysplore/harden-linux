@@ -59,6 +59,7 @@ class Semaphore:
         req = urllib.request.Request(self.base_url + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self.token}")
         req.add_header("Accept", "application/json")
+        req.add_header("User-Agent", "harden-linux-semaphore-bootstrap/1.0")
         if data is not None:
             req.add_header("Content-Type", "application/json")
         try:
@@ -201,6 +202,7 @@ def ensure_environment(
             print(f"  exists (id={item['id']})")
             if secrets or extra_vars:
                 body: Dict[str, Any] = {
+                    "id": item["id"],
                     "name": name,
                     "project_id": project_id,
                     "json": json.dumps(environment_vars),
@@ -232,7 +234,7 @@ def ensure_template(
     repository_id: int,
     environment_id: int,
     playbook: str,
-    arguments: str,
+    arguments: List[str],
     branch: str,
     description: str,
     dry_run: bool,
@@ -252,7 +254,7 @@ def ensure_template(
         "repository_id": repository_id,
         "environment_id": environment_id,
         "playbook": playbook,
-        "arguments": arguments,
+        "arguments": json.dumps(arguments),
         "description": description,
         "app": "ansible",
         "git_branch": branch,
@@ -315,6 +317,8 @@ def main() -> int:
     if args.dry_run:
         print(f"project: {project_name} (would ensure)")
         print(f"key: {key_name} (ssh, login={ssh_login}) (would ensure)")
+        if not repo_url.startswith(("git@", "ssh://")):
+            print("key: none (none) (would ensure)")
         if bootstrap_password:
             print(f"key: bootstrap-login (login_password, login={bootstrap_login}) (would ensure)")
         print(f"repository: {repo_name} -> {repo_url} (would ensure)")
@@ -338,6 +342,10 @@ def main() -> int:
         args.dry_run,
     ) if api else {"id": 0, "name": key_name}
 
+    repo_key = key
+    if not repo_url.startswith(("git@", "ssh://")):
+        repo_key = ensure_key(api, project_id, "none", "none", {}, args.dry_run) if api else {"id": 0, "name": "none"}
+
     bootstrap_key = None
     if bootstrap_password:
         bootstrap_key = ensure_key(
@@ -355,7 +363,7 @@ def main() -> int:
         repo_name,
         repo_url,
         branch,
-        int(key.get("id") or 0) if repo_url.startswith(("git@", "ssh://")) else None,
+        int(repo_key.get("id") or 0),
         args.dry_run,
     ) if api else {"id": 0, "name": repo_name}
 
@@ -403,49 +411,50 @@ def main() -> int:
         (
             "bootstrap",
             "requirements-playbook.yml",
-            f"--extra-vars bootstrap_user={bootstrap_login}",
+            ["--extra-vars", f"bootstrap_user={bootstrap_login}"],
             "Bootstrap the hardening user and SSH access.",
         ),
         (
             "harden-check",
             "main-playbook.yml",
-            "--check --diff --extra-vars @profiles/baseline.yml",
+            ["--check", "--diff", "--extra-vars", "@profiles/baseline.yml"],
             "Preview the baseline hardening changes.",
         ),
         (
             "harden-apply",
             "main-playbook.yml",
-            "--extra-vars @profiles/nist-800-53.yml",
+            ["--extra-vars", "@profiles/nist-800-53.yml"],
             "Apply the NIST-oriented hardening profile.",
         ),
         (
             "harden-bsi",
             "main-playbook.yml",
-            "--extra-vars @profiles/bsi-grundschutz.yml",
+            ["--extra-vars", "@profiles/bsi-grundschutz.yml"],
             "Apply the BSI-oriented hardening profile.",
         ),
         (
             "harden-strict",
             "main-playbook.yml",
-            "--extra-vars @profiles/strict.yml",
+            ["--extra-vars", "@profiles/strict.yml"],
             "Apply the strict high-value-host profile.",
         ),
         (
             "maintenance-report",
             "main-playbook.yml",
-            "--tags lynis,integrity --extra-vars @profiles/baseline.yml",
+            ["--tags", "lynis,integrity", "--extra-vars", "@profiles/baseline.yml"],
             "Run the Lynis and AIDE maintenance report.",
         ),
         (
             "notify-test",
             "main-playbook.yml",
-            "--tags notify -e notify_test=true",
+            ["--tags", "notify", "-e", "notify_test=true"],
             "Send a notification test through the configured backend.",
         ),
         (
             "drift-check",
             "main-playbook.yml",
-            "--check --diff --tags system,ssh,password,firewall,updates,audit,integrity --extra-vars @profiles/baseline.yml",
+            ["--check", "--diff", "--tags", "system,ssh,password,firewall,updates,audit,integrity",
+             "--extra-vars", "@profiles/baseline.yml"],
             "Check for drift without applying changes.",
         ),
     ]
@@ -470,7 +479,7 @@ def main() -> int:
                 args.dry_run,
             )
         else:
-            print(f"template: {name} ({playbook}) -> {arguments} (would create)")
+            print(f"template: {name} ({playbook}) -> {' '.join(arguments)} (would create)")
 
     print("\nDone.")
     if not args.dry_run:
