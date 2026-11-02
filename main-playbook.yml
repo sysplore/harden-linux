@@ -18,7 +18,7 @@
           - (ansible_distribution != 'Debian') or (ansible_distribution_major_version | int >= 12)
           - (ansible_distribution != 'Ubuntu') or (ansible_distribution_major_version | int >= 22)
         fail_msg: "Supported platforms: Debian 12+ and Ubuntu 22.04+."
-        tags: [always]
+      tags: [always]
 
     - name: Refresh apt cache
       ansible.builtin.apt:
@@ -40,10 +40,10 @@
           - mail_smtp_server | length > 0
           - mail_pw | length > 0
         fail_msg: "mail_to is set but mail_smtp_server or mail_pw is empty. Set them or clear mail_to."
-        tags: [always]
       when:
         - mail_enabled | bool
         - harden_features.mail | default(true) | bool
+      tags: [always]
 
   roles:
     - role: packages
