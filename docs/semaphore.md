@@ -49,8 +49,10 @@ idempotent: existing names are reused. It targets the Semaphore 2.16 API
    ```
 
 `semaphore.env` is gitignored. The script reads the private key from
-`SEMAPHORE_SSH_KEY_FILE` and sends it to Semaphore; it does not write any secret
-to the repository.
+`SEMAPHORE_SSH_KEY_FILE`, the matching public key from
+`SEMAPHORE_SSH_PUBLIC_KEY_FILE`, and sends them to Semaphore. The public key is
+stored in the environment as `ssh_public_key` so the bootstrap playbook can
+install it for the `ansible` user. It does not write any secret to the repo.
 
 The script creates these templates:
 

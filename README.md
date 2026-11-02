@@ -49,7 +49,8 @@ For Semaphore, do not edit `hosts.yml`. Add servers to the Semaphore inventory.
    ```
 
 5. **Environment** → New Environment: add `ansible_become_password` as a secret
-   variable, plus any `notify_*` variables you want.
+   variable, `ssh_public_key` as a normal variable (the public half of
+   `ansible-ssh`), and any `notify_*` variables you want.
 6. **Task Templates** → New Template: `harden-check`, playbook
    `main-playbook.yml`, inventory `linux-ansible`, repository and environment as
    above, arguments `--check --diff --extra-vars @profiles/baseline.yml`.

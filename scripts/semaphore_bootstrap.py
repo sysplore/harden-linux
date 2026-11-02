@@ -187,30 +187,34 @@ def ensure_environment(
     project_id: int,
     name: str,
     secrets: List[Dict[str, Any]],
+    extra_vars: Dict[str, str],
     dry_run: bool,
 ) -> Dict[str, Any]:
     print(f"environment: {name}")
     if dry_run:
         return {"id": 0, "name": name}
     path = f"/api/project/{project_id}/environment"
+    environment_vars = {"harden_serial": "1"}
+    environment_vars.update(extra_vars)
     for item in api.get(f"{path}?sort=name&order=asc"):
         if item.get("name") == name:
             print(f"  exists (id={item['id']})")
-            if secrets:
+            if secrets or extra_vars:
                 body: Dict[str, Any] = {
                     "name": name,
                     "project_id": project_id,
-                    "json": json.dumps({"harden_serial": "1"}),
+                    "json": json.dumps(environment_vars),
                     "env": "{}",
-                    "secrets": secrets,
                 }
+                if secrets:
+                    body["secrets"] = secrets
                 api.request("PUT", f"{path}/{item['id']}", body)
-                print("  secrets updated")
+                print("  variables updated")
             return item
-    body: Dict[str, Any] = {
+    body = {
         "name": name,
         "project_id": project_id,
-        "json": json.dumps({"harden_serial": "1"}),
+        "json": json.dumps(environment_vars),
         "env": "{}",
     }
     if secrets:
@@ -282,6 +286,14 @@ def main() -> int:
     key_name = env("SEMAPHORE_KEY_NAME", "ansible-ssh")
     ssh_login = env("SEMAPHORE_SSH_LOGIN", "ansible")
     ssh_key_file = Path(env("SEMAPHORE_SSH_KEY_FILE", "~/.ssh/id_ed25519")).expanduser()
+    ssh_key_passphrase = env("SEMAPHORE_SSH_KEY_PASSPHRASE")
+    ssh_public_key = env("SEMAPHORE_SSH_PUBLIC_KEY")
+    if not ssh_public_key:
+        pub_path = Path(env("SEMAPHORE_SSH_PUBLIC_KEY_FILE", f"{ssh_key_file}.pub")).expanduser()
+        if pub_path.is_file():
+            ssh_public_key = pub_path.read_text(encoding="utf-8").strip()
+    if not ssh_public_key:
+        print("WARNING: no SSH public key found; set SEMAPHORE_SSH_PUBLIC_KEY_FILE or SEMAPHORE_SSH_PUBLIC_KEY.", file=sys.stderr)
     inventory_file_value = env("SEMAPHORE_INVENTORY_FILE")
     inventory_name = env("SEMAPHORE_INVENTORY_NAME", "linux-ansible")
     env_name = env("SEMAPHORE_ENV_NAME", "harden")
@@ -322,7 +334,7 @@ def main() -> int:
         project_id,
         key_name,
         "ssh",
-        {"ssh": {"login": ssh_login, "private_key": read_private_key(ssh_key_file), "passphrase": ""}},
+        {"ssh": {"login": ssh_login, "private_key": read_private_key(ssh_key_file), "passphrase": ssh_key_passphrase}},
         args.dry_run,
     ) if api else {"id": 0, "name": key_name}
 
@@ -380,7 +392,8 @@ def main() -> int:
     else:
         print("WARNING: SEMAPHORE_BECOME_PASSWORD is not set; tasks need passwordless sudo or a become secret.", file=sys.stderr)
 
-    environment = ensure_environment(api, project_id, env_name, secrets, args.dry_run) if api else {"id": 0, "name": env_name}
+    environment_extra = {"ssh_public_key": ssh_public_key} if ssh_public_key else {}
+    environment = ensure_environment(api, project_id, env_name, secrets, environment_extra, args.dry_run) if api else {"id": 0, "name": env_name}
 
     env_id = int(environment.get("id") or 1)
     inv_id = int(inventory.get("id") or 1)
