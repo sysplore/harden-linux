@@ -111,7 +111,7 @@
     dest: /etc/logwatch/conf/logwatch.conf
     content: |
       MailTo = {{ mail_to }}
-      MailFrom = {{ mail_from }}
+      MailFrom = {{ mail_from | default('', true) | default('root@' ~ ansible_fqdn, true) }}
       Detail = {{ logwatch_detail }}
       Range = yesterday
       Service = All

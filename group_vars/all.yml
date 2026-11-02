@@ -175,7 +175,7 @@ firewall_mail_ports:
   - 25
   - 465
   - 587
-  - "{{ mail_port }}"
+  - "{{ mail_port | default('', true) | default(587, true) }}"
 firewall_ufw_logging: low
 psad_enabled: true
 psad_enable_auto_ids: true

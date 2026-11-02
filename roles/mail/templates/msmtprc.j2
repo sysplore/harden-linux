@@ -5,13 +5,13 @@ tls_starttls {{ 'on' if mail_tls_starttls | bool else 'off' }}
 tls_trust_file /etc/ssl/certs/ca-certificates.crt
 logfile /var/log/msmtp
 
-account {{ mail_user }}
+account {{ mail_user_effective }}
 host {{ mail_smtp_server }}
-port {{ mail_port }}
-from {{ mail_from }}
+port {{ mail_port_effective }}
+from {{ mail_from_effective }}
 set_from_header on
-user {{ mail_user }}
+user {{ mail_user_effective }}
 password "{{ mail_pw }}"
 
-account default: {{ mail_user }}
+account default: {{ mail_user_effective }}
 aliases /etc/aliases

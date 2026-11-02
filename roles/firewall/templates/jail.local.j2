@@ -2,7 +2,7 @@
 ignoreip = {{ fail2ban_ignoreip | join(' ') }}
 {% if (notify_backend_effective | default('none') == 'smtp') and (mail_enabled | default(false) | bool) %}
 destemail = {{ mail_to }}
-sender = {{ mail_from }}
+sender = {{ mail_from | default('', true) | default('root@' ~ ansible_fqdn, true) }}
 mta = mail
 action = %(action_mwl)s
 {% elif notify_enabled | default(false) | bool %}

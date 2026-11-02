@@ -32,6 +32,10 @@ This is the simple path. In Semaphore:
    - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
    - **Hardening username**: the account to create; blank means `ansible`
    - **Inbound TCP ports**: extra ports to open; for a mail server use `25,465,587,993,995`
+   - **Notification email**: blank disables email; can be added later
+   - **SMTP server**, **SMTP port**, **SMTP username**, **SMTP password**, **From address**
+   - **STARTTLS**: Yes for 587, No for 465
+   - **Verify SMTP now**: No saves credentials without sending a test
    - **SSH password**
    - **Sudo password**: leave blank to reuse the SSH password
 3. Run it.

@@ -10,3 +10,6 @@ mail_user: "{{ mail_from }}"
 mail_pw: ""
 mail_verify: false
 mail_enabled: "{{ (harden_features.mail | default(true) | bool) and (mail_to | length > 0) }}"
+mail_from_effective: "{{ mail_from | default('', true) | default('root@' ~ ansible_fqdn, true) }}"
+mail_user_effective: "{{ mail_user | default('', true) | default(mail_from_effective, true) }}"
+mail_port_effective: "{{ mail_port | default('', true) | default(587, true) | int }}"
