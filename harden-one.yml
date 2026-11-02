@@ -44,6 +44,11 @@
       ansible.builtin.debug:
         msg: "Hardening {{ target_host }} ({{ target_group }}) as {{ target_user_effective }}"
 
+    - name: Warn about check mode
+      ansible.builtin.debug:
+        msg: "Check mode: no changes will be made. Uncheck Dry run to harden the server."
+      when: ansible_check_mode
+
     - name: SSH login reminder
       ansible.builtin.debug:
         msg: >-

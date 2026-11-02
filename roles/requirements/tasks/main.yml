@@ -133,10 +133,32 @@
   when: su_override.stdout | trim != 'root suusers 4750 ' ~ su_path
   changed_when: true
 
+- name: Check whether the hardening user exists
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ hardening_user }}"
+  register: hardening_user_lookup
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Explain the skipped key install in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Check mode: {{ hardening_user }} does not exist yet, so the authorized
+      key was not installed. Uncheck Dry run and rerun to create the user.
+  when:
+    - ansible_check_mode
+    - hardening_user_lookup.stdout | default('') | length == 0
+
 - name: Install the authorized SSH key
   ansible.posix.authorized_key:
     user: "{{ hardening_user }}"
     key: "{{ ssh_public_key if ssh_public_key | length > 0 else lookup('file', sshpub_location) }}"
     exclusive: "{{ ssh_authorized_keys_exclusive | bool }}"
     state: present
-  when: (ssh_public_key | length > 0) or (sshpub_location | length > 0)
+  when:
+    - (ssh_public_key | length > 0) or (sshpub_location | length > 0)
+    - (not ansible_check_mode) or (hardening_user_lookup.stdout | length > 0)
