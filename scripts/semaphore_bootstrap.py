@@ -298,6 +298,7 @@ def read_private_key(path: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap a Semaphore project for harden-linux.")
     parser.add_argument("--dry-run", action="store_true", help="print the plan without calling the API")
+    parser.add_argument("--prune", action="store_true", help="delete templates not in the managed set")
     args = parser.parse_args()
 
     base_url = env("SEMAPHORE_URL")
@@ -557,6 +558,22 @@ def main() -> int:
         },
     ]
 
+    profile_survey = [
+        {
+            "name": "harden_profile",
+            "title": "Hardening profile",
+            "description": "Leave blank for baseline.",
+            "type": "enum",
+            "required": False,
+            "values": [
+                {"name": "Baseline", "value": "baseline"},
+                {"name": "NIST 800-53", "value": "nist-800-53"},
+                {"name": "BSI Grundschutz", "value": "bsi-grundschutz"},
+                {"name": "Strict", "value": "strict"},
+            ],
+        },
+    ]
+
     templates = [
         (
             "harden-one",
@@ -566,39 +583,11 @@ def main() -> int:
             one_host_survey,
         ),
         (
-            "bootstrap",
-            "requirements-playbook.yml",
-            ["--extra-vars", f"bootstrap_user={bootstrap_login}"],
-            "Bootstrap the hardening user and SSH access.",
-            None,
-        ),
-        (
-            "harden-check",
+            "fleet",
             "main-playbook.yml",
-            ["--check", "--diff", "--extra-vars", "@profiles/baseline.yml"],
-            "Preview the baseline hardening changes.",
-            None,
-        ),
-        (
-            "harden-apply",
-            "main-playbook.yml",
-            ["--extra-vars", "@profiles/nist-800-53.yml"],
-            "Apply the NIST-oriented hardening profile.",
-            None,
-        ),
-        (
-            "harden-bsi",
-            "main-playbook.yml",
-            ["--extra-vars", "@profiles/bsi-grundschutz.yml"],
-            "Apply the BSI-oriented hardening profile.",
-            None,
-        ),
-        (
-            "harden-strict",
-            "main-playbook.yml",
-            ["--extra-vars", "@profiles/strict.yml"],
-            "Apply the strict high-value-host profile.",
-            None,
+            [],
+            "Fleet: add hosts to linux-ansible. Use Dry run for check, uncheck to apply.",
+            profile_survey,
         ),
         (
             "maintenance-report",
@@ -608,18 +597,10 @@ def main() -> int:
             None,
         ),
         (
-            "notify-test",
-            "main-playbook.yml",
-            ["--tags", "notify", "-e", "notify_test=true"],
-            "Send a notification test through the configured backend.",
-            None,
-        ),
-        (
-            "drift-check",
-            "main-playbook.yml",
-            ["--check", "--diff", "--tags", "system,ssh,password,firewall,updates,audit,integrity",
-             "--extra-vars", "@profiles/baseline.yml"],
-            "Check for drift without applying changes.",
+            "bootstrap",
+            "requirements-playbook.yml",
+            ["--extra-vars", f"bootstrap_user={bootstrap_login}"],
+            "Bootstrap the hardening user and SSH access.",
             None,
         ),
     ]
@@ -646,6 +627,13 @@ def main() -> int:
             )
         else:
             print(f"template: {name} ({playbook}) -> {' '.join(arguments)} (would create)")
+
+    managed_templates = {entry[0] for entry in templates}
+    if args.prune and api:
+        for item in api.get(f"/api/project/{project_id}/templates?sort=name&order=asc"):
+            if item.get("name") not in managed_templates:
+                api.request("DELETE", f"/api/project/{project_id}/templates/{item['id']}")
+                print(f"template: {item['name']} (removed)")
 
     print("\nDone.")
     if not args.dry_run:

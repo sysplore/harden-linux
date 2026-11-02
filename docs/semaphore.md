@@ -56,15 +56,10 @@ install it for the `ansible` user. It does not write any secret to the repo.
 
 The script creates these templates:
 
-- `harden-one` (single server: IP, distro, SSH user, password, sudo password)
-- `harden-check`
-- `harden-apply`
-- `harden-bsi`
-- `harden-strict`
-- `maintenance-report`
-- `notify-test`
-- `drift-check`
-- `bootstrap` (only when `SEMAPHORE_BOOTSTRAP_PASSWORD` is set)
+- `harden-one` — single server, end-to-end form
+- `fleet` — hosts from `linux-ansible`; Dry run = check, uncheck = apply
+- `maintenance-report` — Lynis and AIDE only
+- `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing
 
 It does not create schedules or approvals; add those in the Semaphore UI. Use
 `--limit` for the first run, for example `--limit server1`.
@@ -145,29 +140,30 @@ sudoers drop-ins and the authorized key. Run it per host or in small batches.
 
 ## 4. Hardening task templates
 
-| Template | Playbook | Extra CLI arguments |
+| Template | Playbook | Use |
 |---|---|---|
-| `harden-check` | `main-playbook.yml` | `--check --diff --extra-vars @profiles/baseline.yml` |
-| `harden-apply` | `main-playbook.yml` | `--extra-vars @profiles/nist-800-53.yml` |
-| `harden-bsi` | `main-playbook.yml` | `--extra-vars @profiles/bsi-grundschutz.yml` |
-| `harden-strict` | `main-playbook.yml` | `--extra-vars @profiles/strict.yml` |
-| `maintenance-report` | `main-playbook.yml` | `--tags lynis,integrity --extra-vars @profiles/baseline.yml` |
-| `notify-test` | `main-playbook.yml` | `--tags notify -e notify_test=true` |
-| `drift-check` | `main-playbook.yml` | `--check --diff --tags system,ssh,password,firewall,updates,audit,integrity --extra-vars @profiles/baseline.yml` |
+| `harden-one` | `harden-one.yml` | One server; fill the form |
+| `fleet` | `main-playbook.yml` | Hosts from `linux-ansible`; profile selector; Dry run for check |
+| `maintenance-report` | `main-playbook.yml` | `--tags lynis,integrity` |
+| `bootstrap` | `requirements-playbook.yml` | Fleet bootstrap only |
 
-Use `--limit` per host or group. For production, run `harden-check` first and
-review the diff in the Semaphore task log before running `harden-apply`.
+Use `--limit` per host or group. For production, run `fleet` with **Dry run**
+checked and review the diff in the task log. Run it again with Dry run unchecked
+to apply.
 
 Notifications are configured per host or per Semaphore environment with the
 `notify_*` variables. Backends are `smtp`, `webhook`, `ntfy`, `gotify` and
-`none`; `auto` selects the first configured one. Run the `notify-test` template
-once after changing a backend.
+`none`; `auto` selects the first configured one. Test with:
+
+```bash
+sudo /usr/local/sbin/harden-notify --test
+```
 
 A canary flow:
 
-1. `harden-check` with `--limit web01`.
+1. `fleet` with `--limit web01`, Dry run checked.
 2. Review the diff and the Lynis/AIDE artifacts.
-3. `harden-apply` with `--limit web01`.
+3. `fleet` with `--limit web01`, Dry run unchecked.
 4. Verify SSH, UFW and the application.
 5. Apply to the rest in batches (`harden_serial: "25%"`).
 
@@ -177,10 +173,9 @@ Typical schedule:
 
 | Job | Cadence |
 |---|---|
-| `drift-check` | weekly |
+| `fleet` (Dry run) | weekly |
 | `maintenance-report` | daily or weekly |
-| `harden-check` | weekly |
-| `harden-apply` | monthly, after review |
+| `fleet` (apply) | monthly, after review |
 
 Semaphore stores task history. If you need long-term evidence, export the task
 artifact/log to your SIEM or ticketing system. Do not build a second scheduler.

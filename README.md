@@ -46,7 +46,8 @@ playbook. When it finishes, root SSH is disabled; use the `ansible` user and key
 for later runs. You do not need to edit the inventory YAML for this path.
 
 Use the inventory YAML editor only for the fleet path: add hosts to
-`linux-ansible`, then run `harden-check` / `harden-apply` against them.
+`linux-ansible`, then run the `fleet` template. Check it with **Dry run**
+checked; uncheck Dry run to apply.
 
 ## Default UFW rules
 
@@ -99,14 +100,21 @@ ports are not opened by default.
 5. **Environment** → New Environment: add `ansible_become_password` as a secret
    variable, `ssh_public_key` as a normal variable (the public half of
    `ansible-ssh`), and any `notify_*` variables you want.
-6. **Task Templates** → New Template: `harden-check`, playbook
-   `main-playbook.yml`, inventory `linux-ansible`, repository and environment as
-   above, arguments `--check --diff --extra-vars @profiles/baseline.yml`.
-7. Run `harden-check` with `--limit web01`. Review the diff in the task log. Then
-   run `harden-apply` with the same limit.
+6. **Task Templates** → `fleet`: playbook `main-playbook.yml`, inventory
+   `linux-ansible`, repository and environment as above. Choose the profile in
+   the form.
+7. Run `fleet` with **Limit** `web01` and **Dry run** checked. Review the diff.
+   Run it again with the same limit and Dry run unchecked to apply.
 8. For a fresh server, run the `bootstrap` template first
    (`requirements-playbook.yml`, `linux-bootstrap`, `--extra-vars
    bootstrap_user=root`), then switch to `linux-ansible`.
+
+Templates are intentionally limited to four:
+
+- `harden-one` — one server, end-to-end form.
+- `fleet` — hosts from `linux-ansible`; Dry run = check, uncheck = apply.
+- `maintenance-report` — Lynis and AIDE only.
+- `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing.
 
 Profiles: `baseline.yml`, `nist-800-53.yml`, `bsi-grundschutz.yml`, `strict.yml`.
 `scripts/semaphore_bootstrap.py` creates the repository entry, key, inventory,
