@@ -238,6 +238,7 @@ def ensure_template(
     branch: str,
     description: str,
     dry_run: bool,
+    survey_vars: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     print(f"template: {name}")
     if dry_run:
@@ -260,6 +261,8 @@ def ensure_template(
         "git_branch": branch,
         "allow_override_args_in_task": True,
     }
+    if survey_vars is not None:
+        body["survey_vars"] = survey_vars
     item = api.post(path, body)
     print(f"  created (id={item['id']})")
     return item
@@ -407,48 +410,102 @@ def main() -> int:
     inv_id = int(inventory.get("id") or 1)
     repo_id = int(repo.get("id") or 1)
 
+    one_host_survey = [
+        {
+            "name": "target_host",
+            "title": "Server IP or hostname",
+            "description": "The server to harden.",
+            "type": "",
+            "required": True,
+        },
+        {
+            "name": "target_group",
+            "title": "Distribution",
+            "type": "enum",
+            "required": True,
+            "values": [
+                {"name": "Debian", "value": "debian"},
+                {"name": "Ubuntu", "value": "ubuntu"},
+            ],
+        },
+        {
+            "name": "target_user",
+            "title": "SSH user",
+            "description": "Defaults to root.",
+            "type": "",
+            "required": False,
+        },
+        {
+            "name": "target_password",
+            "title": "SSH password",
+            "type": "secret",
+            "required": True,
+        },
+        {
+            "name": "target_become_password",
+            "title": "Sudo password",
+            "description": "Defaults to the SSH password.",
+            "type": "secret",
+            "required": False,
+        },
+    ]
+
     templates = [
+        (
+            "harden-one",
+            "harden-one.yml",
+            [],
+            "Add one server by IP and password, bootstrap it, and harden it.",
+            one_host_survey,
+        ),
         (
             "bootstrap",
             "requirements-playbook.yml",
             ["--extra-vars", f"bootstrap_user={bootstrap_login}"],
             "Bootstrap the hardening user and SSH access.",
+            None,
         ),
         (
             "harden-check",
             "main-playbook.yml",
             ["--check", "--diff", "--extra-vars", "@profiles/baseline.yml"],
             "Preview the baseline hardening changes.",
+            None,
         ),
         (
             "harden-apply",
             "main-playbook.yml",
             ["--extra-vars", "@profiles/nist-800-53.yml"],
             "Apply the NIST-oriented hardening profile.",
+            None,
         ),
         (
             "harden-bsi",
             "main-playbook.yml",
             ["--extra-vars", "@profiles/bsi-grundschutz.yml"],
             "Apply the BSI-oriented hardening profile.",
+            None,
         ),
         (
             "harden-strict",
             "main-playbook.yml",
             ["--extra-vars", "@profiles/strict.yml"],
             "Apply the strict high-value-host profile.",
+            None,
         ),
         (
             "maintenance-report",
             "main-playbook.yml",
             ["--tags", "lynis,integrity", "--extra-vars", "@profiles/baseline.yml"],
             "Run the Lynis and AIDE maintenance report.",
+            None,
         ),
         (
             "notify-test",
             "main-playbook.yml",
             ["--tags", "notify", "-e", "notify_test=true"],
             "Send a notification test through the configured backend.",
+            None,
         ),
         (
             "drift-check",
@@ -456,10 +513,11 @@ def main() -> int:
             ["--check", "--diff", "--tags", "system,ssh,password,firewall,updates,audit,integrity",
              "--extra-vars", "@profiles/baseline.yml"],
             "Check for drift without applying changes.",
+            None,
         ),
     ]
 
-    for name, playbook, arguments, description in templates:
+    for name, playbook, arguments, description, survey_vars in templates:
         if name == "bootstrap" and not bootstrap_inventory:
             print("template: bootstrap (skipped: set SEMAPHORE_BOOTSTRAP_PASSWORD to create it)")
             continue
@@ -477,6 +535,7 @@ def main() -> int:
                 branch,
                 description,
                 args.dry_run,
+                survey_vars=survey_vars,
             )
         else:
             print(f"template: {name} ({playbook}) -> {' '.join(arguments)} (would create)")

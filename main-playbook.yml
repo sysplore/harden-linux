@@ -2,7 +2,7 @@
 - name: Harden Debian and Ubuntu servers
   hosts: linux
   gather_facts: true
-  remote_user: "{{ user_name }}"
+  remote_user: "{{ ansible_user | default(user_name) }}"
   become: true
   become_method: ansible.builtin.sudo
   force_handlers: true

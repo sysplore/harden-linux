@@ -56,6 +56,7 @@ install it for the `ansible` user. It does not write any secret to the repo.
 
 The script creates these templates:
 
+- `harden-one` (single server: IP, distro, SSH user, password, sudo password)
 - `harden-check`
 - `harden-apply`
 - `harden-bsi`

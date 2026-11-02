@@ -20,7 +20,28 @@ Three pieces:
 For Semaphore, do not edit `hosts.yml`. Add servers to the Semaphore inventory.
 `hosts.yml` is only for the optional CLI path.
 
-## First server in Semaphore
+## Harden one server (no inventory editing)
+
+This is the simple path. In Semaphore:
+
+1. **Task Templates** → `harden-one` → **Run**.
+2. Fill the form:
+   - **Server IP or hostname**
+   - **Distribution**: Debian or Ubuntu
+   - **SSH user**: leave blank for `root`
+   - **SSH password**
+   - **Sudo password**: leave blank to reuse the SSH password
+3. Run it.
+
+The template adds the host dynamically, runs the bootstrap playbook (creates the
+`ansible` user, groups, sudoers and SSH key), then runs the full hardening
+playbook. When it finishes, root SSH is disabled; use the `ansible` user and key
+for later runs. You do not need to edit the inventory YAML for this path.
+
+Use the inventory YAML editor only for the fleet path: add hosts to
+`linux-ansible`, then run `harden-check` / `harden-apply` against them.
+
+## First server in Semaphore (fleet inventory)
 
 1. **Repositories** → New Repository: `https://github.com/sysplore/harden-linux.git`,
    branch `main`. It is public, so no Git key is required.

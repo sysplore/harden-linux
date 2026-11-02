@@ -1,0 +1,42 @@
+---
+# One-shot hardening for a single server.
+#
+# Semaphore supplies the survey variables:
+#   target_host, target_group, target_user, target_password,
+#   target_become_password
+#
+# The host is added to the in-memory inventory, then the normal bootstrap and
+# hardening playbooks run against it. For a fleet, use the linux-ansible
+# inventory and the harden-check/harden-apply templates instead.
+
+- name: Register the target host
+  hosts: localhost
+  gather_facts: false
+  vars:
+    target_user_effective: "{{ target_user | default('root', true) }}"
+  tasks:
+    - name: Validate the target
+      ansible.builtin.assert:
+        that:
+          - target_host is defined
+          - target_host | length > 0
+          - target_group in ['debian', 'ubuntu']
+        fail_msg: "target_host is required and target_group must be debian or ubuntu."
+
+    - name: Add the target to the in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ target_host }}"
+        ansible_host: "{{ target_host }}"
+        ansible_user: "{{ target_user_effective }}"
+        ansible_password: "{{ target_password | default('') }}"
+        ansible_become_password: "{{ target_become_password | default(target_password | default(''), true) }}"
+        ansible_become_method: ansible.builtin.sudo
+        ansible_python_interpreter: /usr/bin/python3
+        groups: "linux,{{ target_group }}"
+
+    - name: Show the target
+      ansible.builtin.debug:
+        msg: "Hardening {{ target_host }} ({{ target_group }}) as {{ target_user_effective }}"
+
+- import_playbook: requirements-playbook.yml  # noqa: name[play]
+- import_playbook: main-playbook.yml  # noqa: name[play]

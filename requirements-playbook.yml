@@ -2,8 +2,8 @@
 - name: Bootstrap a Debian or Ubuntu server
   hosts: linux
   gather_facts: true
-  remote_user: "{{ bootstrap_user | default('root') }}"
-  become: "{{ (bootstrap_user | default('root')) != 'root' }}"
+  remote_user: "{{ ansible_user | default(bootstrap_user | default('root')) }}"
+  become: "{{ (ansible_user | default(bootstrap_user | default('root'))) != 'root' }}"
   any_errors_fatal: true
   pre_tasks:
     - name: Assert supported platform
