@@ -59,19 +59,39 @@
     validate: 'visudo -cf %s'
     backup: true
 
+- name: Locate the active sudo binary
+  ansible.builtin.command:
+    argv:
+      - readlink
+      - -f
+      - /usr/bin/sudo
+  register: sudo_binary_path
+  changed_when: false
+  failed_when: false
+
+- name: Read the active sudo version
+  ansible.builtin.command:
+    argv:
+      - sudo
+      - -V
+  register: sudo_version_output
+  changed_when: false
+  failed_when: false
+
+- name: Detect sudo-rs
+  ansible.builtin.set_fact:
+    sudo_is_sudo_rs: >-
+      {{ ('sudo-rs' in ((sudo_version_output.stdout | default('')) ~ (sudo_version_output.stderr | default(''))))
+         or ('cargo/bin/sudo' in (sudo_binary_path.stdout | default(''))) }}
+
 - name: Harden sudo defaults
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: 00-hardening.j2
     dest: /etc/sudoers.d/00-hardening
-    content: |
-      Defaults use_pty
-      Defaults logfile="{{ sudo_logfile }}"
-      Defaults timestamp_timeout={{ sudo_timestamp_timeout }}
-      Defaults passwd_tries=3
-      Defaults env_reset
-      Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     owner: root
     group: root
     mode: '0440'
+    backup: true
     validate: 'visudo -cf %s'
 
 - name: Limit sudo to the sudousers group

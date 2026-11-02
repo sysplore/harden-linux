@@ -1,0 +1,9 @@
+# Managed by Ansible
+Defaults use_pty
+Defaults env_reset
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Defaults passwd_tries={{ sudo_passwd_tries | default(3) }}
+Defaults timestamp_timeout={{ sudo_timestamp_timeout }}
+{% if not (sudo_is_sudo_rs | default(false) | bool) %}
+Defaults logfile="{{ sudo_logfile }}"
+{% endif %}
