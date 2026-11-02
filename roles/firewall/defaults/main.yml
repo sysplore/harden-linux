@@ -16,6 +16,7 @@ psad_enable_auto_ids: true
 psad_auto_ids_danger_level: 5
 psad_email_alert_danger_level: 5
 psad_email_limit: 10
+psad_auto_ids_emails: true
 fail2ban_enabled: true
 fail2ban_maxretry: 5
 fail2ban_bantime: 1h

@@ -173,6 +173,8 @@ psad_auto_ids_danger_level: 5
 psad_email_alert_danger_level: 5
 # Max emails per source IP; 0 means unlimited.
 psad_email_limit: 10
+# Emails for automatic blocks (separate from scan alerts).
+psad_auto_ids_emails: true
 fail2ban_enabled: true
 fail2ban_maxretry: 5
 fail2ban_bantime: 1h

@@ -57,7 +57,7 @@
     - regexp: '^ENABLE_AUTO_IDS '
       line: 'ENABLE_AUTO_IDS {{ "Y" if psad_enable_auto_ids | bool else "N" }};'
     - regexp: '^ENABLE_AUTO_IDS_EMAILS'
-      line: 'ENABLE_AUTO_IDS_EMAILS {{ "Y" if mail_enabled | bool else "N" }};'
+      line: 'ENABLE_AUTO_IDS_EMAILS {{ "Y" if (psad_auto_ids_emails | bool and mail_enabled | bool) else "N" }};'
     - regexp: '^AUTO_IDS_DANGER_LEVEL'
       line: 'AUTO_IDS_DANGER_LEVEL {{ psad_auto_ids_danger_level }};'
     - regexp: '^EMAIL_ALERT_DANGER_LEVEL'
