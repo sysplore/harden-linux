@@ -107,7 +107,7 @@
   when: ssh_socket_active | bool
   notify:
     - reload systemd
-    - restart ssh socket
+    - restart ssh service
 
 - name: Validate the assembled sshd configuration
   ansible.builtin.command: sshd -t

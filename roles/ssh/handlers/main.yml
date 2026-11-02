@@ -3,23 +3,14 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
-- name: restart ssh socket
-  ansible.builtin.systemd:
-    name: "{{ ssh_socket_name }}"
-    state: restarted
-  when: ssh_socket_active | default(false) | bool
-
 - name: restart ssh service
-  block:
-    - name: Validate sshd configuration before restart
-      ansible.builtin.command: sshd -t
-      changed_when: false
-
-    - name: Restart the active SSH unit
-      ansible.builtin.systemd:
-        name: "{{ ssh_socket_name if ssh_socket_active | default(false) | bool else ssh_service_name }}"
-        state: restarted
-  rescue:
-    - name: Refuse to restart SSH with an invalid configuration
-      ansible.builtin.fail:
-        msg: "sshd -t failed; SSH was not restarted. Fix /etc/ssh/sshd_config.d/00-hardening.conf."
+  ansible.builtin.shell: |
+    set -euo pipefail
+    sshd -t
+    if [ "{{ ssh_socket_active | default(false) | bool }}" = "True" ]; then
+      systemctl restart {{ ssh_socket_name }}
+    else
+      systemctl restart {{ ssh_service_name }}
+    fi
+  args:
+    executable: /bin/bash
