@@ -23,7 +23,7 @@
     direction: out
     port: "{{ item }}"
     proto: tcp
-  loop: "{{ (firewall_allowed_out_tcp + [firewall_mail_port]) | unique }}"
+  loop: "{{ (firewall_allowed_out_tcp + firewall_mail_ports) | unique }}"
   notify: reload ufw
 
 - name: Allow outbound UDP ports
