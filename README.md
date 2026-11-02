@@ -31,6 +31,7 @@ This is the simple path. In Semaphore:
    - **Hardening profile**: Baseline, NIST 800-53, BSI Grundschutz or Strict
    - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
    - **Hardening username**: the account to create; blank means `ansible`
+   - **Inbound TCP ports**: extra ports to open; for a mail server use `25,465,587,993,995`
    - **SSH password**
    - **Sudo password**: leave blank to reuse the SSH password
 3. Run it.
@@ -53,8 +54,10 @@ Default policy: deny incoming, **allow outgoing**, deny routed.
 | Outbound | Allowed by default |
 | Routed | Denied |
 
-SMTP is allowed outbound. Inbound SMTP is not opened; if the server is a mail
-server, add it manually with `ufw allow 25/tcp`.
+SMTP is allowed outbound. Inbound SMTP is not opened unless you add it. For a
+mail server, put `25,465,587,993,995` in **Inbound TCP ports** on the
+`harden-one` form, or set `firewall_allowed_in_tcp` for the host. Otherwise UFW
+default-deny will block mail when the hardening run enables the firewall.
 
 The explicit outbound allowlist (`firewall_allowed_out_tcp` /
 `firewall_allowed_out_udp`) is kept so you can switch back to strict egress by

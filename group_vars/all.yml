@@ -158,6 +158,8 @@ firewall_enabled: true
 firewall_default_incoming_policy: deny
 firewall_default_outgoing_policy: allow
 firewall_default_routed_policy: deny
+# Extra inbound TCP ports, e.g. [25, 465, 587, 993, 995] for a mail server.
+firewall_allowed_in_tcp: []
 firewall_allowed_out_tcp:
   - 43
   - 53

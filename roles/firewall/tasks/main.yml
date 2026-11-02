@@ -17,6 +17,15 @@
     proto: tcp
   notify: reload ufw
 
+- name: Allow additional inbound TCP ports
+  community.general.ufw:
+    rule: allow
+    direction: in
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ firewall_allowed_in_tcp | unique }}"
+  notify: reload ufw
+
 - name: Allow outbound TCP ports
   community.general.ufw:
     rule: allow

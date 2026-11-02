@@ -474,6 +474,13 @@ def main() -> int:
             "required": False,
         },
         {
+            "name": "open_inbound_tcp",
+            "title": "Inbound TCP ports",
+            "description": "Comma-separated, e.g. 25,465,587,993,995. Blank = none.",
+            "type": "",
+            "required": False,
+        },
+        {
             "name": "target_password",
             "title": "SSH password",
             "type": "secret",

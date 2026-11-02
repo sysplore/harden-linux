@@ -39,6 +39,9 @@
           -o PreferredAuthentications=publickey,password,keyboard-interactive
         ansible_python_interpreter: /usr/bin/python3
         groups: "linux,{{ target_group }}"
+        firewall_allowed_in_tcp: >-
+          {{ open_inbound_tcp | default('', true) | split(',') |
+             map('trim') | select | list }}
 
     - name: Show the target
       ansible.builtin.debug:
