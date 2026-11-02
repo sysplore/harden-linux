@@ -290,6 +290,12 @@ Priority order:
 13. **Process controls**: access reviews, change approval, incident response,
     decommissioning, per-host runbooks.
 
+External controls (not implemented by this repository): Wazuh is assumed to
+cover central logging/SIEM, host IDS/EDR, file integrity monitoring,
+vulnerability detection and security configuration assessment. Backup/DR, disk
+encryption, Secure Boot, network segmentation, access reviews and change
+approval remain external and need their own evidence.
+
 ## 10. Verification commands
 
 ```bash

@@ -30,6 +30,7 @@ This is the simple path. In Semaphore:
    - **Distribution**: Debian or Ubuntu
    - **Hardening profile**: Baseline, NIST 800-53, BSI Grundschutz or Strict
    - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
+   - **Hardening username**: the account to create; blank means `ansible`
    - **SSH password**
    - **Sudo password**: leave blank to reuse the SSH password
 3. Run it.

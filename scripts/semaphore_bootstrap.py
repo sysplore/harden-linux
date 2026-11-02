@@ -467,6 +467,13 @@ def main() -> int:
             "required": False,
         },
         {
+            "name": "harden_user",
+            "title": "Hardening username",
+            "description": "Account to create; blank = ansible.",
+            "type": "",
+            "required": False,
+        },
+        {
             "name": "target_password",
             "title": "SSH password",
             "type": "secret",

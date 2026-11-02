@@ -1,0 +1,3 @@
+---
+harden_user: ""
+hardening_user: "{{ harden_user | default('', true) | default(user_name | default('ansible', true), true) }}"

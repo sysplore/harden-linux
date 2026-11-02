@@ -22,7 +22,7 @@
   ansible.builtin.assert:
     that:
       - (user_pw | length > 0) or (ssh_public_key | length > 0) or (sshpub_location | length > 0)
-    fail_msg: "Set user_pw and/or ssh_public_key/sshpub_location for {{ user_name }}."
+    fail_msg: "Set user_pw and/or ssh_public_key/sshpub_location for {{ hardening_user }}."
 
 - name: Create service groups
   ansible.builtin.group:
@@ -35,7 +35,7 @@
 
 - name: Create the hardening user
   ansible.builtin.user:
-    name: "{{ user_name }}"
+    name: "{{ hardening_user }}"
     password: >-
       {{ (user_pw | password_hash('yescrypt')) if (user_pw | length > 0 and pam_yescrypt | default(true) | bool)
          else ((user_pw | password_hash('sha512')) if user_pw | length > 0 else '*') }}
@@ -86,12 +86,12 @@
 
 - name: Grant the hardening user sudo
   ansible.builtin.copy:
-    dest: "/etc/sudoers.d/20-{{ user_name }}"
+    dest: "/etc/sudoers.d/20-{{ hardening_user }}"
     content: |
       {% if sudo_nopasswd | bool %}
-      {{ user_name }} ALL=(ALL:ALL) NOPASSWD: ALL
+      {{ hardening_user }} ALL=(ALL:ALL) NOPASSWD: ALL
       {% else %}
-      {{ user_name }} ALL=(ALL:ALL) ALL
+      {{ hardening_user }} ALL=(ALL:ALL) ALL
       {% endif %}
     owner: root
     group: root
@@ -135,7 +135,7 @@
 
 - name: Install the authorized SSH key
   ansible.posix.authorized_key:
-    user: "{{ user_name }}"
+    user: "{{ hardening_user }}"
     key: "{{ ssh_public_key if ssh_public_key | length > 0 else lookup('file', sshpub_location) }}"
     exclusive: "{{ ssh_authorized_keys_exclusive | bool }}"
     state: present
