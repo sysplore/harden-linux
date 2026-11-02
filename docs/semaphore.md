@@ -56,13 +56,19 @@ install it for the `ansible` user. It does not write any secret to the repo.
 
 The script creates these templates:
 
-- `harden-one` — single server, end-to-end form
-- `fleet` — hosts from `linux-ansible`; Dry run = check, uncheck = apply
+- `harden-one` — single server, end-to-end form; registers the host on success
+- `add-host` — add a server to the inventory from a form
+- `sync-hosts` — refresh the fleet host dropdown after manual inventory edits
+- `fleet` — hosts from `linux-ansible`; choose a host or group, Dry run = check
 - `maintenance-report` — Lynis and AIDE only
 - `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing
 
 It does not create schedules or approvals; add those in the Semaphore UI. Use
-`--limit` for the first run, for example `--limit server1`.
+the **Target host** dropdown (or the **Limit** field) for the first run.
+
+Rerun the bootstrap after upgrading an existing project. That creates the
+`add-host` and `sync-hosts` templates, adds the `fleet_host` dropdown to
+`fleet`, and stores the inventory API settings and token in the environment.
 
 Hosts are added in Semaphore. The script creates the empty `linux` / `debian` /
 `ubuntu` group structure; leave `SEMAPHORE_INVENTORY_FILE` empty unless you
@@ -142,14 +148,56 @@ sudoers drop-ins and the authorized key. Run it per host or in small batches.
 
 | Template | Playbook | Use |
 |---|---|---|
-| `harden-one` | `harden-one.yml` | One server; fill the form |
-| `fleet` | `main-playbook.yml` | Hosts from `linux-ansible`; profile selector; Dry run for check |
+| `harden-one` | `harden-one.yml` | One server; fill the form; registers the host on success |
+| `add-host` | `add-host.yml` | Add or update one inventory host from a form |
+| `sync-hosts` | `sync-hosts.yml` | Refresh the fleet host dropdown after manual YAML edits |
+| `fleet` | `main-playbook.yml` | Inventory hosts; host dropdown and profile selector; Dry run for check |
 | `maintenance-report` | `main-playbook.yml` | `--tags lynis,integrity` |
 | `bootstrap` | `requirements-playbook.yml` | Fleet bootstrap only |
 
-Use `--limit` per host or group. For production, run `fleet` with **Dry run**
-checked and review the diff in the task log. Run it again with Dry run unchecked
-to apply.
+### Adding hosts from the UI
+
+Semaphore 2.16 has no structured host editor, so this repository supplies one
+through the `add-host` template. The `fleet` **Target host** dropdown is a
+`fleet_host` survey variable kept in sync by the inventory helper; it is not a
+native Semaphore host picker.
+
+1. Run `add-host`. Enter the server IP or hostname, pick Debian or Ubuntu, and
+   optionally override the address, SSH user and port.
+2. The playbook writes the host into the `linux-ansible` static YAML inventory
+   through the Semaphore API and refreshes the `fleet` **Target host** dropdown.
+3. Run `fleet`, select the host, check **Dry run**, and review the diff.
+
+`harden-one` registers a server automatically after a successful hardening run,
+so a server normally has to be entered only once. It registers the target under
+the IP or hostname you entered; use `add-host` if you want a separate inventory
+name. The password is used for the first bootstrap and is not stored; after
+hardening the inventory's `ansible` key is used. `add-host` assumes the host
+already accepts that key, so use `harden-one` or `bootstrap` for a fresh
+server. The inventory key login (`SEMAPHORE_SSH_LOGIN`) must match the
+hardening user (`user_name`, default `ansible`). Semaphore 2.16 supports one
+SSH credential per inventory, so per-host passwords would require separate
+inventories.
+
+This needs an API token with project write access. The bootstrap stores
+`SEMAPHORE_RUNNER_API_TOKEN` (or `SEMAPHORE_API_TOKEN` when the former is
+empty) as the `semaphore_api_token` environment secret, and also sets
+`semaphore_url`, `semaphore_project_id` and `semaphore_inventory_id` in the
+environment. Every task using that environment can read the token; use a
+dedicated token and rotate it if that is too broad for your deployment. The
+runner must also be able to reach `SEMAPHORE_URL`; use an internal URL if the
+public one is not reachable from the runner.
+
+If you edit the inventory YAML by hand, run `sync-hosts` to refresh the
+dropdown. The helper rewrites the YAML, so comments and formatting are not
+preserved. Removing a host from the inventory does not remove it from existing
+task history or from a running task. The dropdown lists up to every host in the
+inventory; for large fleets use the optional **Limit** field with a host
+pattern instead.
+
+Use the **Target host** dropdown or the optional **Limit** field to narrow a
+run. For production, run `fleet` with **Dry run** checked and review the diff in
+the task log. Run it again with Dry run unchecked to apply.
 
 Notifications are configured per host or per Semaphore environment with the
 `notify_*` variables. Backends are `smtp`, `webhook`, `ntfy`, `gotify` and
@@ -161,9 +209,9 @@ sudo /usr/local/sbin/harden-notify --test
 
 A canary flow:
 
-1. `fleet` with `--limit web01`, Dry run checked.
+1. `fleet`, select `web01`, Dry run checked.
 2. Review the diff and the Lynis/AIDE artifacts.
-3. `fleet` with `--limit web01`, Dry run unchecked.
+3. `fleet`, select `web01`, Dry run unchecked.
 4. Verify SSH, UFW and the application.
 5. Apply to the rest in batches (`harden_serial: "25%"`).
 

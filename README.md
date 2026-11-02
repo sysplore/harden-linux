@@ -104,22 +104,30 @@ ports are not opened by default.
 6. **Task Templates** → `fleet`: playbook `main-playbook.yml`, inventory
    `linux-ansible`, repository and environment as above. Choose the profile in
    the form.
-7. Run `fleet` with **Limit** `web01` and **Dry run** checked. Review the diff.
-   Run it again with the same limit and Dry run unchecked to apply.
+7. Run `fleet`, select the host, check **Dry run**, and review the diff. Run it
+   again with Dry run unchecked to apply. `harden-one` registers a server in the
+   inventory after a successful run, so you normally enter an IP and password
+   once; the inventory then uses the `ansible` key.
 8. For a fresh server, run the `bootstrap` template first
    (`requirements-playbook.yml`, `linux-bootstrap`, `--extra-vars
    bootstrap_user=root`), then switch to `linux-ansible`.
 
-Templates are intentionally limited to four:
+Templates are intentionally limited to six:
 
-- `harden-one` — one server, end-to-end form.
-- `fleet` — hosts from `linux-ansible`; Dry run = check, uncheck = apply.
+- `harden-one` — one server, end-to-end form; registers the host on success.
+- `add-host` — add or update one inventory host from a form.
+- `sync-hosts` — refresh the fleet host dropdown after manual YAML edits.
+- `fleet` — hosts from `linux-ansible`; host dropdown; Dry run = check.
 - `maintenance-report` — Lynis and AIDE only.
 - `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing.
 
-Profiles: `baseline.yml`, `nist-800-53.yml`, `bsi-grundschutz.yml`, `strict.yml`.
 `scripts/semaphore_bootstrap.py` creates the repository entry, key, inventory,
-environment and templates for you; it deliberately does not add hosts.
+environment and templates for you. The `add-host` template, `sync-hosts` and
+the `harden-one` registration update the inventory through the Semaphore API;
+the bootstrap stores a project-write token as the `semaphore_api_token`
+environment secret.
+
+Profiles: `baseline.yml`, `nist-800-53.yml`, `bsi-grundschutz.yml`, `strict.yml`.
 
 ## Supported platforms
 

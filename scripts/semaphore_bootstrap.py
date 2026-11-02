@@ -6,8 +6,8 @@ This script creates, idempotently:
   - an SSH key (and optionally a bootstrap login/password key)
   - a repository
   - a hardening inventory (and optionally a bootstrap inventory)
-  - an environment with an optional become-password secret
-  - task templates for bootstrap, check, apply, drift and maintenance runs
+  - an environment with inventory API settings and optional secrets
+  - task templates for single-host, inventory, maintenance and bootstrap runs
 
 It uses only the Python standard library. Secrets are read from the environment
 or files and are never written to the repository.
@@ -197,19 +197,37 @@ def ensure_environment(
     path = f"/api/project/{project_id}/environment"
     environment_vars = {"harden_serial": "1"}
     environment_vars.update(extra_vars)
+
+    def resolve_secrets(existing: Dict[str, Any]) -> List[Dict[str, Any]]:
+        resolved = []
+        for secret in secrets:
+            item = dict(secret)
+            if item["name"] in existing:
+                item["id"] = existing[item["name"]]
+                item["operation"] = "update"
+            else:
+                item["operation"] = "create"
+            resolved.append(item)
+        return resolved
+
     for item in api.get(f"{path}?sort=name&order=asc"):
         if item.get("name") == name:
             print(f"  exists (id={item['id']})")
             if secrets or extra_vars:
+                detail = api.get(f"{path}/{item['id']}")
+                existing_secrets = {
+                    secret.get("name"): secret.get("id")
+                    for secret in (detail.get("secrets") or [])
+                }
                 body: Dict[str, Any] = {
                     "id": item["id"],
                     "name": name,
                     "project_id": project_id,
                     "json": json.dumps(environment_vars),
-                    "env": "{}",
+                    "env": detail.get("env") or "{}",
                 }
                 if secrets:
-                    body["secrets"] = secrets
+                    body["secrets"] = resolve_secrets(existing_secrets)
                 api.request("PUT", f"{path}/{item['id']}", body)
                 print("  variables updated")
             return item
@@ -239,6 +257,7 @@ def ensure_template(
     description: str,
     dry_run: bool,
     survey_vars: Optional[List[Dict[str, Any]]] = None,
+    task_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     print(f"template: {name}")
     if dry_run:
@@ -247,24 +266,35 @@ def ensure_template(
     for item in api.get(f"{path}?sort=name&order=asc"):
         if item.get("name") == name:
             print(f"  exists (id={item['id']})")
-            if survey_vars is not None:
-                update_body = {
-                    "id": item["id"],
-                    "name": name,
-                    "project_id": project_id,
-                    "inventory_id": inventory_id,
-                    "repository_id": repository_id,
-                    "environment_id": environment_id,
-                    "playbook": playbook,
-                    "arguments": json.dumps(arguments),
-                    "description": description,
-                    "app": "ansible",
-                    "git_branch": branch,
-                    "allow_override_args_in_task": True,
-                    "survey_vars": survey_vars,
-                }
+            if survey_vars is not None or task_params is not None:
+                update_body = dict(api.get(f"{path}/{item['id']}"))
+                update_body.update(
+                    {
+                        "name": name,
+                        "project_id": project_id,
+                        "inventory_id": inventory_id,
+                        "repository_id": repository_id,
+                        "environment_id": environment_id,
+                        "playbook": playbook,
+                        "arguments": json.dumps(arguments),
+                        "description": description,
+                        "app": "ansible",
+                        "git_branch": branch,
+                        "allow_override_args_in_task": True,
+                    }
+                )
+                if survey_vars is not None:
+                    existing_vars = update_body.get("survey_vars") or []
+                    desired_names = {var["name"] for var in survey_vars}
+                    update_body["survey_vars"] = list(survey_vars) + [
+                        var for var in existing_vars if var.get("name") not in desired_names
+                    ]
+                if task_params is not None:
+                    merged_task_params = dict(update_body.get("task_params") or {})
+                    merged_task_params.update(task_params)
+                    update_body["task_params"] = merged_task_params
                 api.request("PUT", f"{path}/{item['id']}", update_body)
-                print("  updated survey variables")
+                print("  updated template settings")
             return item
     body = {
         "name": name,
@@ -281,9 +311,41 @@ def ensure_template(
     }
     if survey_vars is not None:
         body["survey_vars"] = survey_vars
+    if task_params is not None:
+        body["task_params"] = task_params
     item = api.post(path, body)
     print(f"  created (id={item['id']})")
     return item
+
+
+def ensure_fleet_host_survey(api: Semaphore, project_id: int) -> None:
+    print("fleet host dropdown: fleet_host")
+    templates = api.get(f"/api/project/{project_id}/templates?sort=name&order=asc")
+    fleet = find_by_name(templates, "fleet")
+    if not fleet:
+        print("  fleet template not found; skipping")
+        return
+
+    path = f"/api/project/{project_id}/templates/{fleet['id']}"
+    template = api.get(path)
+    survey_vars = template.get("survey_vars") or []
+    if any(var.get("name") == "fleet_host" for var in survey_vars):
+        print("  exists")
+        return
+
+    survey_vars.append(
+        {
+            "name": "fleet_host",
+            "title": "Target host",
+            "description": "Pick one host from the inventory, or All linux hosts.",
+            "type": "enum",
+            "required": False,
+            "values": [{"name": "All linux hosts", "value": ""}],
+        }
+    )
+    template["survey_vars"] = survey_vars
+    api.request("PUT", path, template)
+    print("  created")
 
 
 def read_private_key(path: Path) -> str:
@@ -348,6 +410,8 @@ def main() -> int:
         if bootstrap_password:
             print("inventory: linux-bootstrap (would ensure)")
         print(f"environment: {env_name} (would ensure)")
+        print("environment vars: semaphore_url, semaphore_project_id, semaphore_inventory_id")
+        print("environment secret: semaphore_api_token (would ensure)")
 
     api = Semaphore(base_url, token) if not args.dry_run else None
     assert api is not None or args.dry_run
@@ -422,7 +486,30 @@ def main() -> int:
     else:
         print("WARNING: SEMAPHORE_BECOME_PASSWORD is not set; tasks need passwordless sudo or a become secret.", file=sys.stderr)
 
-    environment_extra = {"ssh_public_key": ssh_public_key} if ssh_public_key else {}
+    runner_api_token = env("SEMAPHORE_RUNNER_API_TOKEN") or token
+    if runner_api_token:
+        secrets.append(
+            {
+                "name": "semaphore_api_token",
+                "secret": runner_api_token,
+                "type": "env",
+                "operation": "create",
+            }
+        )
+    elif not args.dry_run:
+        print(
+            "WARNING: no Semaphore API token available; add-host, sync-hosts and "
+            "harden-one registration will not update the inventory.",
+            file=sys.stderr,
+        )
+
+    environment_extra = {
+        "semaphore_url": base_url.rstrip("/"),
+        "semaphore_project_id": str(project_id),
+        "semaphore_inventory_id": str(int(inventory.get("id") or 1)),
+    }
+    if ssh_public_key:
+        environment_extra["ssh_public_key"] = ssh_public_key
     environment = ensure_environment(api, project_id, env_name, secrets, environment_extra, args.dry_run) if api else {"id": 0, "name": env_name}
 
     env_id = int(environment.get("id") or 1)
@@ -565,6 +652,48 @@ def main() -> int:
         },
     ]
 
+    add_host_survey = [
+        {
+            "name": "inventory_host",
+            "title": "Server IP or hostname",
+            "description": "Name used in the inventory and the default address.",
+            "type": "",
+            "required": True,
+        },
+        {
+            "name": "inventory_address",
+            "title": "Address override",
+            "description": "Blank = use the server IP or hostname above.",
+            "type": "",
+            "required": False,
+        },
+        {
+            "name": "inventory_group",
+            "title": "Distribution",
+            "type": "enum",
+            "required": True,
+            "default_value": "ubuntu",
+            "values": [
+                {"name": "Debian", "value": "debian"},
+                {"name": "Ubuntu", "value": "ubuntu"},
+            ],
+        },
+        {
+            "name": "inventory_user",
+            "title": "SSH user",
+            "description": "Blank = the inventory credential user (ansible).",
+            "type": "",
+            "required": False,
+        },
+        {
+            "name": "inventory_port",
+            "title": "SSH port",
+            "description": "Blank = 22.",
+            "type": "int",
+            "required": False,
+        },
+    ]
+
     profile_survey = [
         {
             "name": "harden_profile",
@@ -588,19 +717,22 @@ def main() -> int:
             [],
             "Add one server by IP and password, bootstrap it, and harden it.",
             one_host_survey,
+            None,
         ),
         (
             "fleet",
             "main-playbook.yml",
             [],
-            "Fleet: add hosts to linux-ansible. Use Dry run for check, uncheck to apply.",
+            "Fleet: pick a host from the inventory. Use Dry run for check, uncheck to apply.",
             profile_survey,
+            {"allow_override_limit": True},
         ),
         (
             "maintenance-report",
             "main-playbook.yml",
             ["--tags", "lynis,integrity", "--extra-vars", "@profiles/baseline.yml"],
             "Run the Lynis and AIDE maintenance report.",
+            None,
             None,
         ),
         (
@@ -609,10 +741,27 @@ def main() -> int:
             ["--extra-vars", f"bootstrap_user={bootstrap_login}"],
             "Bootstrap the hardening user and SSH access.",
             None,
+            None,
+        ),
+        (
+            "add-host",
+            "add-host.yml",
+            [],
+            "Add a server to the Semaphore inventory from a form.",
+            add_host_survey,
+            None,
+        ),
+        (
+            "sync-hosts",
+            "sync-hosts.yml",
+            [],
+            "Refresh the fleet host dropdown from the inventory.",
+            None,
+            None,
         ),
     ]
 
-    for name, playbook, arguments, description, survey_vars in templates:
+    for name, playbook, arguments, description, survey_vars, task_params in templates:
         if name == "bootstrap" and not bootstrap_inventory:
             print("template: bootstrap (skipped: set SEMAPHORE_BOOTSTRAP_PASSWORD to create it)")
             continue
@@ -631,9 +780,15 @@ def main() -> int:
                 description,
                 args.dry_run,
                 survey_vars=survey_vars,
+                task_params=task_params,
             )
         else:
             print(f"template: {name} ({playbook}) -> {' '.join(arguments)} (would create)")
+
+    if api:
+        ensure_fleet_host_survey(api, project_id)
+    else:
+        print("fleet host dropdown: fleet_host (would ensure)")
 
     managed_templates = {entry[0] for entry in templates}
     if args.prune and api:

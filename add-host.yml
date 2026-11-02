@@ -1,0 +1,69 @@
+---
+# Add or update one host in the Semaphore inventory. Semaphore 2.16 has no
+# structured host editor, so this playbook turns the task survey into that
+# editor: it writes the host to the static-yaml inventory through the API and
+# refreshes the fleet host dropdown.
+
+- name: Add a host to the Semaphore inventory
+  hosts: localhost
+  gather_facts: false
+  vars:
+    inventory_address_effective: >-
+      {{ inventory_address | default('', true) | default(inventory_host, true) }}
+    inventory_port_effective: >-
+      {{ inventory_port | default('', true) | default(22, true) | int }}
+  tasks:
+    - name: Validate the inventory API settings
+      ansible.builtin.assert:
+        that:
+          - semaphore_url | default('', true) | length > 0
+          - semaphore_project_id | default('', true) | length > 0
+          - semaphore_inventory_id | default('', true) | length > 0
+        fail_msg: >-
+          Semaphore inventory settings are missing. Rerun
+          scripts/semaphore_bootstrap.py with SEMAPHORE_URL and
+          SEMAPHORE_API_TOKEN set.
+        quiet: true
+      tags: [always]
+
+    - name: Validate the host fields
+      ansible.builtin.assert:
+        that:
+          - inventory_host | default('', true) | length > 0
+          - inventory_group in ['debian', 'ubuntu']
+        fail_msg: "inventory_host is required and inventory_group must be debian or ubuntu."
+        quiet: true
+      tags: [always]
+
+    - name: Update the Semaphore inventory
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/scripts/semaphore_inventory.py"
+          - add-host
+          - "--host"
+          - "{{ inventory_host }}"
+          - "--address"
+          - "{{ inventory_address_effective }}"
+          - "--group"
+          - "{{ inventory_group }}"
+          - "--user"
+          - "{{ inventory_user | default('', true) }}"
+          - "--port"
+          - "{{ inventory_port_effective }}"
+      environment:
+        SEMAPHORE_URL: "{{ semaphore_url }}"
+        SEMAPHORE_PROJECT_ID: "{{ semaphore_project_id }}"
+        SEMAPHORE_INVENTORY_ID: "{{ semaphore_inventory_id }}"
+        SEMAPHORE_INVENTORY_CHECK: "{{ ansible_check_mode | bool }}"
+      register: inventory_update
+      changed_when: >-
+        inventory_update.stdout_lines | default([]) | first | default('') in
+        ['changed', 'would-change']
+      check_mode: false
+      tags: [always]
+
+    - name: Show the inventory result
+      ansible.builtin.debug:
+        msg: "{{ inventory_update.stdout_lines | default([]) }}"
+      tags: [always]

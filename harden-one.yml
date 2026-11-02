@@ -63,3 +63,4 @@
 
 - import_playbook: requirements-playbook.yml  # noqa: name[play]
 - import_playbook: main-playbook.yml  # noqa: name[play]
+- import_playbook: register-host.yml  # noqa: name[play]

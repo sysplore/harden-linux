@@ -1,0 +1,43 @@
+---
+# Refresh the fleet host dropdown from the Semaphore inventory. Run this after
+# editing the inventory YAML by hand.
+
+- name: Sync the Semaphore host dropdown
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Validate the inventory API settings
+      ansible.builtin.assert:
+        that:
+          - semaphore_url | default('', true) | length > 0
+          - semaphore_project_id | default('', true) | length > 0
+          - semaphore_inventory_id | default('', true) | length > 0
+        fail_msg: >-
+          Semaphore inventory settings are missing. Rerun
+          scripts/semaphore_bootstrap.py with SEMAPHORE_URL and
+          SEMAPHORE_API_TOKEN set.
+        quiet: true
+      tags: [always]
+
+    - name: Refresh the fleet host dropdown
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/scripts/semaphore_inventory.py"
+          - sync
+      environment:
+        SEMAPHORE_URL: "{{ semaphore_url }}"
+        SEMAPHORE_PROJECT_ID: "{{ semaphore_project_id }}"
+        SEMAPHORE_INVENTORY_ID: "{{ semaphore_inventory_id }}"
+        SEMAPHORE_INVENTORY_CHECK: "{{ ansible_check_mode | bool }}"
+      register: inventory_sync
+      changed_when: >-
+        inventory_sync.stdout_lines | default([]) | first | default('') in
+        ['changed', 'would-change']
+      check_mode: false
+      tags: [always]
+
+    - name: Show the sync result
+      ansible.builtin.debug:
+        msg: "{{ inventory_sync.stdout_lines | default([]) }}"
+      tags: [always]

@@ -1,0 +1,110 @@
+---
+# Register a successfully hardened host in the Semaphore inventory so the next
+# fleet run can select it. harden-one imports this after the hardening play.
+
+- name: Register the hardened host in the Semaphore inventory
+  hosts: localhost
+  gather_facts: false
+  vars:
+    inventory_port_effective: >-
+      {{ target_ssh_port | default('', true) | default(22, true) | int }}
+    registration_target_supported: >-
+      {{ ':' not in (target_host | default('', true)) }}
+    inventory_settings_present: >-
+      {{
+        (semaphore_url | default('', true) | length > 0)
+        or (semaphore_project_id | default('', true) | length > 0)
+        or (semaphore_inventory_id | default('', true) | length > 0)
+        or (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
+        or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
+      }}
+    inventory_settings_complete: >-
+      {{
+        (semaphore_url | default('', true) | length > 0)
+        and (semaphore_project_id | default('', true) | length > 0)
+        and (semaphore_inventory_id | default('', true) | length > 0)
+        and (
+          (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
+          or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
+        )
+      }}
+  tasks:
+    - name: Validate the target
+      ansible.builtin.assert:
+        that:
+          - target_host | default('', true) | length > 0
+          - target_group in ['debian', 'ubuntu']
+        fail_msg: "target_host and target_group are required."
+        quiet: true
+
+    - name: Validate the inventory registration settings
+      ansible.builtin.assert:
+        that:
+          - inventory_settings_complete
+        fail_msg: >-
+          semaphore_url, semaphore_project_id, semaphore_inventory_id and the
+          semaphore_api_token environment secret must all be set to register
+          the host. Rerun scripts/semaphore_bootstrap.py.
+        quiet: true
+      when: inventory_settings_present
+
+    - name: Skip inventory registration when it is not configured
+      ansible.builtin.debug:
+        msg: >-
+          Semaphore inventory registration is not configured; the host was
+          hardened but not added to the inventory.
+      when: not inventory_settings_present
+
+    - name: Explain the skipped registration for an IPv6 target
+      ansible.builtin.debug:
+        msg: >-
+          target_host is an IPv6 address. Add it with the add-host template
+          using a DNS name and the IPv6 address so the fleet host dropdown can
+          target it.
+      when:
+        - inventory_settings_present
+        - not registration_target_supported
+
+    - name: Register the host in the Semaphore inventory
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/scripts/semaphore_inventory.py"
+          - add-host
+          - "--host"
+          - "{{ target_host }}"
+          - "--address"
+          - "{{ target_host }}"
+          - "--group"
+          - "{{ target_group }}"
+          - "--port"
+          - "{{ inventory_port_effective }}"
+      environment:
+        SEMAPHORE_URL: "{{ semaphore_url }}"
+        SEMAPHORE_PROJECT_ID: "{{ semaphore_project_id }}"
+        SEMAPHORE_INVENTORY_ID: "{{ semaphore_inventory_id }}"
+        SEMAPHORE_INVENTORY_CHECK: "false"
+      register: registration
+      changed_when: >-
+        registration.stdout_lines | default([]) | first | default('') == 'changed'
+      check_mode: false
+      when:
+        - inventory_settings_complete
+        - registration_target_supported
+        - not ansible_check_mode
+
+    - name: Explain the skipped registration in check mode
+      ansible.builtin.debug:
+        msg: "Check mode: the host was not added to the Semaphore inventory."
+      when:
+        - inventory_settings_complete
+        - registration_target_supported
+        - ansible_check_mode
+
+    - name: Show the registration result
+      ansible.builtin.debug:
+        msg: "{{ registration.stdout_lines | default([]) }}"
+      when:
+        - inventory_settings_complete
+        - registration_target_supported
+        - not ansible_check_mode

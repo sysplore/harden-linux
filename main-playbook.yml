@@ -1,6 +1,6 @@
 ---
 - name: Harden Debian and Ubuntu servers
-  hosts: linux
+  hosts: "{{ fleet_host | default('linux', true) }}"
   gather_facts: true
   remote_user: "{{ ansible_user | default(user_name) }}"
   become: true
