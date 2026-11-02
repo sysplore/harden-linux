@@ -37,6 +37,25 @@
   ansible.builtin.set_fact:
     ssh_socket_active: "{{ ssh_socket_status.stdout | trim == 'active' }}"
 
+- name: Pre-allow the SSH port in UFW before changing sshd
+  community.general.ufw:
+    rule: limit
+    direction: in
+    port: "{{ ssh_port }}"
+    proto: tcp
+  when:
+    - firewall_enabled | default(true) | bool
+    - harden_features.firewall | default(true) | bool
+
+- name: Reload UFW before restarting SSH
+  ansible.builtin.command: ufw reload
+  changed_when: false
+  failed_when: false
+  when:
+    - firewall_enabled | default(true) | bool
+    - harden_features.firewall | default(true) | bool
+    - not ansible_check_mode
+
 - name: Ensure sshd_config includes the drop-in directory
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config

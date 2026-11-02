@@ -30,6 +30,7 @@ This is the simple path. In Semaphore:
    - **Distribution**: Debian or Ubuntu
    - **Hardening profile**: Baseline, NIST 800-53, BSI Grundschutz or Strict
    - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
+   - **SSH port**: blank = 22; the new port is opened in UFW before SSH changes
    - **Hardening username**: the account to create; blank means `ansible`
    - **Inbound TCP ports**: extra ports to open; for a mail server use `25,465,587,993,995`
    - **Notification email**: blank disables email; can be added later

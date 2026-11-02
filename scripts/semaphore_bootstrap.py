@@ -468,6 +468,13 @@ def main() -> int:
             "required": False,
         },
         {
+            "name": "target_ssh_port",
+            "title": "SSH port",
+            "description": "Default 22. Opened in UFW before SSH changes.",
+            "type": "",
+            "required": False,
+        },
+        {
             "name": "harden_user",
             "title": "Hardening username",
             "description": "Account to create; blank = ansible.",
