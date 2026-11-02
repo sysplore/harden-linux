@@ -36,7 +36,7 @@
         ansible_ssh_common_args: >-
           -o StrictHostKeyChecking=accept-new
           -o ConnectTimeout=15
-          -o PreferredAuthentications=password,keyboard-interactive
+          -o PreferredAuthentications=publickey,password,keyboard-interactive
         ansible_python_interpreter: /usr/bin/python3
         groups: "linux,{{ target_group }}"
 
