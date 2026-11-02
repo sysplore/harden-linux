@@ -60,6 +60,10 @@
       line: 'ENABLE_AUTO_IDS_EMAILS {{ "Y" if mail_enabled | bool else "N" }};'
     - regexp: '^AUTO_IDS_DANGER_LEVEL'
       line: 'AUTO_IDS_DANGER_LEVEL {{ psad_auto_ids_danger_level }};'
+    - regexp: '^EMAIL_ALERT_DANGER_LEVEL'
+      line: 'EMAIL_ALERT_DANGER_LEVEL {{ psad_email_alert_danger_level }};'
+    - regexp: '^EMAIL_LIMIT'
+      line: 'EMAIL_LIMIT {{ psad_email_limit }};'
     - regexp: '^HOSTNAME'
       line: 'HOSTNAME {{ ansible_hostname }};'
   notify: restart psad
