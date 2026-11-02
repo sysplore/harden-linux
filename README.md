@@ -44,18 +44,21 @@ Use the inventory YAML editor only for the fleet path: add hosts to
 
 ## Default UFW rules
 
-Default policy: deny incoming, deny outgoing, deny routed.
+Default policy: deny incoming, **allow outgoing**, deny routed.
 
-| Direction | Ports |
+| Direction | Default |
 |---|---|
-| Inbound TCP | SSH port (`ssh_port`, default 22), rate-limited |
-| Outbound TCP | 43 (whois), 53 (DNS), 80 (HTTP), 443 (HTTPS), 25 (SMTP), 465 (SMTPS), 587 (submission), plus `mail_port` |
-| Outbound UDP | 53 (DNS), 67/68 (DHCP), 123 (NTP) |
+| Inbound TCP | SSH port (`ssh_port`, default 22), rate-limited; everything else denied |
+| Outbound | Allowed by default |
+| Routed | Denied |
 
-SMTP is allowed **outbound** so msmtp/notifications work. Inbound SMTP is not
-opened; if the server is a mail server, add it manually with
-`ufw allow 25/tcp` or extend `firewall_allowed_out_tcp`/`firewall_mail_ports`.
-Additional service ports are not opened by default.
+SMTP is allowed outbound. Inbound SMTP is not opened; if the server is a mail
+server, add it manually with `ufw allow 25/tcp`.
+
+The explicit outbound allowlist (`firewall_allowed_out_tcp` /
+`firewall_allowed_out_udp`) is kept so you can switch back to strict egress by
+setting `firewall_default_outgoing_policy: deny`. Additional inbound service
+ports are not opened by default.
 
 ## First server in Semaphore (fleet inventory)
 

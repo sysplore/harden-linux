@@ -1,12 +1,12 @@
 ---
 - name: Configure UFW default policies
   community.general.ufw:
-    policy: deny
-    direction: "{{ item }}"
+    policy: "{{ item.policy }}"
+    direction: "{{ item.direction }}"
   loop:
-    - incoming
-    - outgoing
-    - routed
+    - { direction: incoming, policy: "{{ firewall_default_incoming_policy }}" }
+    - { direction: outgoing, policy: "{{ firewall_default_outgoing_policy }}" }
+    - { direction: routed, policy: "{{ firewall_default_routed_policy }}" }
   notify: reload ufw
 
 - name: Allow SSH with rate limiting

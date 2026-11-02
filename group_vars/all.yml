@@ -155,6 +155,9 @@ ssh_extra_config: ""
 # Firewall / IDS
 # ---------------------------------------------------------------------------
 firewall_enabled: true
+firewall_default_incoming_policy: deny
+firewall_default_outgoing_policy: allow
+firewall_default_routed_policy: deny
 firewall_allowed_out_tcp:
   - 43
   - 53
