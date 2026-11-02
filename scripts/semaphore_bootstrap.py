@@ -15,9 +15,9 @@ or files and are never written to the repository.
 Usage:
   export SEMAPHORE_URL=https://sp.sysplore.com
   export SEMAPHORE_API_TOKEN=...        # do not commit this
-  export SEMAPHORE_REPO_URL=git@github.com:sysplore/harden-linux.git
+  export SEMAPHORE_REPO_URL=https://github.com/sysplore/harden-linux.git
   export SEMAPHORE_SSH_KEY_FILE=~/.ssh/id_ed25519
-  export SEMAPHORE_INVENTORY_FILE=hosts.yml
+  # optional: export SEMAPHORE_INVENTORY_FILE=hosts.yml
   python3 scripts/semaphore_bootstrap.py --dry-run
   python3 scripts/semaphore_bootstrap.py
 """
@@ -276,7 +276,7 @@ def main() -> int:
     base_url = env("SEMAPHORE_URL")
     token = env("SEMAPHORE_API_TOKEN")
     project_name = env("SEMAPHORE_PROJECT", "harden-linux")
-    repo_url = env("SEMAPHORE_REPO_URL", "git@github.com:sysplore/harden-linux.git")
+    repo_url = env("SEMAPHORE_REPO_URL", "https://github.com/sysplore/harden-linux.git")
     branch = env("SEMAPHORE_REPO_BRANCH", "main")
     repo_name = env("SEMAPHORE_REPO_NAME", "harden-linux")
     key_name = env("SEMAPHORE_KEY_NAME", "ansible-ssh")

@@ -7,6 +7,62 @@ The hardening logic lives in this repository. Semaphore is the inventory,
 credential, execution and scheduling plane. There is no second web app and no
 second credential store.
 
+## How it works
+
+Three pieces:
+
+1. **This repository** — hardening roles, playbooks and profiles. It contains no
+   real hosts and no credentials.
+2. **Semaphore** — stores servers, SSH credentials and sudo secrets; clones this
+   repo, runs a playbook with the profile you choose, keeps logs and schedules.
+3. **The target server** — Debian or Ubuntu.
+
+For Semaphore, do not edit `hosts.yml`. Add servers to the Semaphore inventory.
+`hosts.yml` is only for the optional CLI path.
+
+## First server in Semaphore
+
+1. **Repositories** → New Repository: `https://github.com/sysplore/harden-linux.git`,
+   branch `main`. It is public, so no Git key is required.
+2. **Key Store** → New Key: `ansible-ssh`, type SSH, login `ansible`, private
+   key. The matching public key must be in `/home/ansible/.ssh/authorized_keys`
+   on the server.
+3. If the server has no `ansible` key yet, create `bootstrap-root` (root
+   password or root SSH key) and a `linux-bootstrap` inventory with the same
+   hosts. Run the `bootstrap` template first.
+4. **Inventory** → New Inventory: `linux-ansible`, type Static YAML, SSH key
+   `ansible-ssh`. This is where hosts live:
+
+   ```yaml
+   all:
+     children:
+       linux:
+         children:
+           debian:
+             hosts:
+               web01:
+                 ansible_host: 203.0.113.10
+           ubuntu:
+             hosts:
+               app01:
+                 ansible_host: 203.0.113.11
+   ```
+
+5. **Environment** → New Environment: add `ansible_become_password` as a secret
+   variable, plus any `notify_*` variables you want.
+6. **Task Templates** → New Template: `harden-check`, playbook
+   `main-playbook.yml`, inventory `linux-ansible`, repository and environment as
+   above, arguments `--check --diff --extra-vars @profiles/baseline.yml`.
+7. Run `harden-check` with `--limit web01`. Review the diff in the task log. Then
+   run `harden-apply` with the same limit.
+8. For a fresh server, run the `bootstrap` template first
+   (`requirements-playbook.yml`, `linux-bootstrap`, `--extra-vars
+   bootstrap_user=root`), then switch to `linux-ansible`.
+
+Profiles: `baseline.yml`, `nist-800-53.yml`, `bsi-grundschutz.yml`, `strict.yml`.
+`scripts/semaphore_bootstrap.py` creates the repository entry, key, inventory,
+environment and templates for you; it deliberately does not add hosts.
+
 ## Supported platforms
 
 - Debian 12 (Bookworm) and Debian 13 (Trixie)
