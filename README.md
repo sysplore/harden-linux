@@ -28,7 +28,7 @@ This is the simple path. In Semaphore:
 2. Fill the form:
    - **Server IP or hostname**
    - **Distribution**: Debian or Ubuntu
-   - **SSH user**: leave blank for `root`
+   - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
    - **SSH password**
    - **Sudo password**: leave blank to reuse the SSH password
 3. Run it.
@@ -271,6 +271,10 @@ alert sources.
 
 If `mail_to` is set, `mail_smtp_server` and `mail_pw` are required and validated
 before the play changes anything.
+
+`mail_verify` is `false` by default. When false, the msmtp config is written and
+the hardening run completes without sending a test message. Set it to `true`
+once the SMTP port is live to send the test message and report failures.
 
 ## Safety
 

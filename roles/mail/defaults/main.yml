@@ -8,5 +8,5 @@ mail_tls_starttls: true
 mail_auth: true
 mail_user: "{{ mail_from }}"
 mail_pw: ""
-mail_send_test: true
+mail_verify: false
 mail_enabled: "{{ (harden_features.mail | default(true) | bool) and (mail_to | length > 0) }}"

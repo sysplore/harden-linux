@@ -247,6 +247,24 @@ def ensure_template(
     for item in api.get(f"{path}?sort=name&order=asc"):
         if item.get("name") == name:
             print(f"  exists (id={item['id']})")
+            if survey_vars is not None:
+                update_body = {
+                    "id": item["id"],
+                    "name": name,
+                    "project_id": project_id,
+                    "inventory_id": inventory_id,
+                    "repository_id": repository_id,
+                    "environment_id": environment_id,
+                    "playbook": playbook,
+                    "arguments": json.dumps(arguments),
+                    "description": description,
+                    "app": "ansible",
+                    "git_branch": branch,
+                    "allow_override_args_in_task": True,
+                    "survey_vars": survey_vars,
+                }
+                api.request("PUT", f"{path}/{item['id']}", update_body)
+                print("  updated survey variables")
             return item
     body = {
         "name": name,
@@ -431,7 +449,7 @@ def main() -> int:
         {
             "name": "target_user",
             "title": "SSH user",
-            "description": "Defaults to root.",
+            "description": "Leave blank for ubuntu on Ubuntu, root on Debian.",
             "type": "",
             "required": False,
         },

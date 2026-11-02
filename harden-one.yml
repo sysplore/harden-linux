@@ -13,7 +13,9 @@
   hosts: localhost
   gather_facts: false
   vars:
-    target_user_effective: "{{ target_user | default('root', true) }}"
+    target_user_effective: >-
+      {{ target_user | default('', true) | default(
+           ('ubuntu' if target_group == 'ubuntu' else 'root'), true) }}
   tasks:
     - name: Validate the target
       ansible.builtin.assert:
@@ -31,12 +33,24 @@
         ansible_password: "{{ target_password | default('') }}"
         ansible_become_password: "{{ target_become_password | default(target_password | default(''), true) }}"
         ansible_become_method: ansible.builtin.sudo
+        ansible_ssh_common_args: >-
+          -o StrictHostKeyChecking=accept-new
+          -o ConnectTimeout=15
+          -o PreferredAuthentications=password,keyboard-interactive
         ansible_python_interpreter: /usr/bin/python3
         groups: "linux,{{ target_group }}"
 
     - name: Show the target
       ansible.builtin.debug:
         msg: "Hardening {{ target_host }} ({{ target_group }}) as {{ target_user_effective }}"
+
+    - name: SSH login reminder
+      ansible.builtin.debug:
+        msg: >-
+          If the next play fails with "Connection closed", the SSH user or
+          password auth is wrong. Ubuntu cloud images usually use "ubuntu";
+          Debian images often use "root" or "admin". Verify with
+          ssh {{ target_user_effective }}@{{ target_host }}.
 
 - import_playbook: requirements-playbook.yml  # noqa: name[play]
 - import_playbook: main-playbook.yml  # noqa: name[play]

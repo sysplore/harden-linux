@@ -58,7 +58,8 @@ mail_tls_starttls: true
 mail_auth: true
 mail_user: "{{ mail_from }}"
 mail_pw: ""                       # vault this
-mail_send_test: true
+# Send a test message after configuring msmtp. Disable while SMTP is blocked.
+mail_verify: false
 mail_enabled: "{{ (harden_features.mail | default(true) | bool) and (mail_to | length > 0) }}"
 
 # ---------------------------------------------------------------------------
@@ -169,8 +170,8 @@ firewall_ufw_logging: low
 psad_enabled: true
 psad_enable_auto_ids: true
 psad_auto_ids_danger_level: 5
-# Only email for danger level 5 ("above 4"). Set to 4 to include level 4.
-psad_email_alert_danger_level: 5
+# Only email for danger level 4 and above.
+psad_email_alert_danger_level: 4
 # Max emails per source IP; 0 means unlimited.
 psad_email_limit: 10
 # Emails for automatic blocks (separate from scan alerts).
