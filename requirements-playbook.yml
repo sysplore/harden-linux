@@ -14,6 +14,18 @@
   become: "{{ (ansible_user | default(bootstrap_user | default('', true), true) | default('', true)) != 'root' }}"
   any_errors_fatal: true
   pre_tasks:
+    - name: Select the sudo binary for privilege escalation
+      ansible.builtin.stat:
+        path: /usr/bin/sudo.ws
+      become: false
+      register: sudo_ws_binary
+
+    - name: Use the classic sudo binary on sudo-rs systems
+      ansible.builtin.set_fact:
+        ansible_become_exe: /usr/bin/sudo.ws
+      become: false
+      when: sudo_ws_binary.stat.exists | bool
+
     - name: Assert supported platform
       ansible.builtin.assert:
         that:
