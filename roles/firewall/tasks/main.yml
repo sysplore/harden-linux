@@ -1,56 +1,4 @@
 ---
-- name: Check whether psad is installed
-  ansible.builtin.command:
-    argv:
-      - dpkg-query
-      - -W
-      - -f=${Status}
-      - psad
-  register: firewall_psad_status
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Remove psad and its orphaned dependencies
-  ansible.builtin.apt:
-    name: psad
-    state: absent
-    purge: true
-    autoremove: true
-  environment:
-    DEBIAN_FRONTEND: noninteractive
-  when: "'install ok installed' in (firewall_psad_status.stdout | default(''))"
-
-- name: Read the iptables alternatives state
-  ansible.builtin.command:
-    argv:
-      - update-alternatives
-      - --query
-      - "{{ item }}"
-  loop:
-    - iptables
-    - ip6tables
-  register: firewall_alternatives
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Restore the default iptables backend
-  ansible.builtin.command:
-    argv:
-      - update-alternatives
-      - --auto
-      - "{{ item.item }}"
-  loop: "{{ firewall_alternatives.results | default([]) }}"
-  loop_control:
-    label: "{{ item.item | default('') }}"
-  changed_when: true
-  when:
-    - item.rc is defined
-    - item.rc == 0
-    - "'manual' in (item.stdout | default(''))"
-    - "'legacy' in (item.stdout | default(''))"
-
 - name: Configure UFW default policies
   community.general.ufw:
     policy: "{{ item.policy }}"
@@ -100,16 +48,6 @@
   community.general.ufw:
     state: enabled
     logging: "{{ firewall_ufw_logging }}"
-  notify: reload ufw
-
-- name: Remove the psad logging block from UFW rules
-  ansible.builtin.blockinfile:
-    path: "{{ item }}"
-    marker: "# {mark} ANSIBLE MANAGED BLOCK - psad"
-    state: absent
-  loop:
-    - /etc/ufw/before.rules
-    - /etc/ufw/before6.rules
   notify: reload ufw
 
 - name: Configure fail2ban defaults
