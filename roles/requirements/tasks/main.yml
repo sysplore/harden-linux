@@ -43,11 +43,21 @@
       - sshusers
       - sudousers
       - suusers
+      - adm
+      - systemd-journal
     append: true
     shell: /bin/bash
     create_home: true
     state: present
   no_log: true
+
+- name: Warn when the hardening user is key-only
+  ansible.builtin.debug:
+    msg: >-
+      user_pw is empty: {{ hardening_user }} was created key-only with a
+      locked password, so sudo by password will fail with a PAM error.
+      Set the user_pw secret in the environment and rerun to set a password.
+  when: user_pw | length == 0
 
 - name: Ensure sudoers.d is included
   ansible.builtin.lineinfile:
