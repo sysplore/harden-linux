@@ -31,6 +31,8 @@
     dest: /etc/aide/aide.conf.d/99-hardening.conf
     content: |
       # Managed by Ansible
+      PERMS = p+u+g+ftype
+
       /etc/ssh/sshd_config PERMS
       /etc/ssh/sshd_config.d PERMS
       /etc/sudoers PERMS

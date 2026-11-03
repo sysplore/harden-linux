@@ -108,11 +108,11 @@
 
 - name: Show the Lynis report path
   ansible.builtin.debug:
-    msg: "Lynis report kept at {{ lynis_run.stdout | regex_replace('^kept:', '') }}"
+    msg: "Lynis report kept at {{ lynis_run.stdout | trim | regex_replace('^kept:', '') }}"
   when:
     - lynis_run_audit | bool
     - lynis_run.stdout is defined
-    - lynis_run.stdout is search('^kept:')
+    - lynis_run.stdout | trim is search('^kept:')
 
 - name: Warn when the Lynis audit produced no report
   ansible.builtin.debug:
