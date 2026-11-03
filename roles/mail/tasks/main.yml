@@ -48,12 +48,12 @@
   register: mail_test
   changed_when: false
   failed_when: false
-  when: mail_verify | bool
+  when: mail_verify_effective | bool
 
 - name: Report a failed test message
   ansible.builtin.debug:
     msg: "WARNING: test mail failed: {{ mail_test.stderr | default('') | trim }}"
   when:
-    - mail_verify | bool
+    - mail_verify_effective | bool
     - mail_test is defined
     - mail_test.rc | default(0) != 0

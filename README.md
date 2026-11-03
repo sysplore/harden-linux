@@ -74,14 +74,14 @@ ports are not opened by default.
 
 1. **Repositories** → New Repository: `https://github.com/sysplore/harden-linux.git`,
    branch `main`. It is public, so no Git key is required.
-2. **Key Store** → New Key: `ansible-ssh`, type SSH, login `ansible`, private
-   key. The matching public key must be in `/home/ansible/.ssh/authorized_keys`
-   on the server.
-3. If the server has no `ansible` key yet, create `bootstrap-root` (root
+2. **Key Store** → New Key: `Semaphore`, type SSH, login `ansible` (or your
+   hardening user), private key. The matching public key must be in the
+   hardening user's `~/.ssh/authorized_keys` on the server.
+3. If the server has no hardening key yet, create `bootstrap-root` (root
    password or root SSH key) and a `linux-bootstrap` inventory with the same
    hosts. Run the `bootstrap` template first.
 4. **Inventory** → New Inventory: `linux-ansible`, type Static YAML, SSH key
-   `ansible-ssh`. This is where hosts live:
+   `Semaphore`. This is where hosts live:
 
    ```yaml
    all:
@@ -100,14 +100,14 @@ ports are not opened by default.
 
 5. **Environment** → New Environment: add `ansible_become_password` as a secret
    variable, `ssh_public_key` as a normal variable (the public half of
-   `ansible-ssh`), and any `notify_*` variables you want.
-6. **Task Templates** → `fleet`: playbook `main-playbook.yml`, inventory
-   `linux-ansible`, repository and environment as above. Choose the profile in
-   the form.
+   `Semaphore`), and any `notify_*` variables you want.
+6. **Task Templates** → `fleet`: playbook `fleet-playbook.yml`, inventory
+   `linux-ansible`, repository and environment as above. Choose the host,
+   current SSH user, new hardening user, SSH port and mail settings in the form.
 7. Run `fleet`, select the host, check **Dry run**, and review the diff. Run it
    again with Dry run unchecked to apply. `harden-one` registers a server in the
    inventory after a successful run, so you normally enter an IP and password
-   once; the inventory then uses the `ansible` key.
+   once; the inventory then uses the `Semaphore` key.
 8. For a fresh server, run the `bootstrap` template first
    (`requirements-playbook.yml`, `linux-bootstrap`, `--extra-vars
    bootstrap_user=root`), then switch to `linux-ansible`.

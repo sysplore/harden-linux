@@ -2,7 +2,7 @@
 # SSH hardening. This file is read before the main sshd_config because the
 # Include directive is placed at the top of /etc/ssh/sshd_config.
 
-Port {{ ssh_port }}
+Port {{ ssh_port_effective }}
 AddressFamily {{ ssh_address_family }}
 {% for address in ssh_listen_addresses %}
 ListenAddress {{ address }}

@@ -1,15 +1,28 @@
 ---
-# Register a successfully hardened host in the Semaphore inventory so the next
-# fleet run can select it. harden-one imports this after the hardening play.
+# Register a hardened host in the Semaphore inventory. harden-one and
+# fleet-playbook both import this after the hardening plays. It only runs when
+# exactly one host was selected; a multi-host or "All linux hosts" run skips it.
 
 - name: Register the hardened host in the Semaphore inventory
   hosts: localhost
   gather_facts: false
   vars:
-    inventory_port_effective: >-
-      {{ target_ssh_port | default('', true) | default(22, true) | int }}
-    registration_target_supported: >-
-      {{ ':' not in (target_host | default('', true)) }}
+    registration_host: >-
+      {{ target_host | default(
+           (fleet_host | default('', true) if (fleet_hosts | default('', true) | length == 0) else ''), true) }}
+    registration_port: >-
+      {{ ssh_port | default('', true) | default(22, true) | int }}
+    registration_user: >-
+      {{ harden_user | default('', true)
+         | default(user_name | default('', true), true)
+         | default(semaphore_ssh_login | default('', true), true)
+         | default('ansible', true) }}
+    registration_group_effective: >-
+      {{ target_group if (target_group is defined and target_group | length > 0)
+         else ('debian' if (registration_host | length > 0)
+                         and ('debian' in (hostvars[registration_host].group_names | default([])))
+              else 'ubuntu') }}
+    registration_target_supported: "{{ ':' not in registration_host }}"
     inventory_settings_present: >-
       {{
         (semaphore_url | default('', true) | length > 0)
@@ -32,10 +45,18 @@
     - name: Validate the target
       ansible.builtin.assert:
         that:
-          - target_host | default('', true) | length > 0
-          - target_group in ['debian', 'ubuntu']
-        fail_msg: "target_host and target_group are required."
+          - registration_host | length > 0
+          - registration_group_effective in ['debian', 'ubuntu']
+        fail_msg: "A single inventory host and a debian or ubuntu group are required."
         quiet: true
+      when: registration_host | length > 0
+
+    - name: Skip inventory registration when no single host is selected
+      ansible.builtin.debug:
+        msg: >-
+          No single host was selected (All linux hosts or multiple hosts);
+          skipping inventory registration. Use sync-hosts after manual changes.
+      when: registration_host | length == 0
 
     - name: Validate the inventory registration settings
       ansible.builtin.assert:
@@ -46,22 +67,27 @@
           semaphore_api_token environment secret must all be set to register
           the host. Rerun scripts/semaphore_bootstrap.py.
         quiet: true
-      when: inventory_settings_present
+      when:
+        - registration_host | length > 0
+        - inventory_settings_present
 
     - name: Skip inventory registration when it is not configured
       ansible.builtin.debug:
         msg: >-
           Semaphore inventory registration is not configured; the host was
           hardened but not added to the inventory.
-      when: not inventory_settings_present
+      when:
+        - registration_host | length > 0
+        - not inventory_settings_present
 
     - name: Explain the skipped registration for an IPv6 target
       ansible.builtin.debug:
         msg: >-
-          target_host is an IPv6 address. Add it with the add-host template
-          using a DNS name and the IPv6 address so the fleet host dropdown can
-          target it.
+          registration_host is an IPv6 address. Add it with the add-host
+          template using a DNS name and the IPv6 address so the fleet host
+          dropdown can target it.
       when:
+        - registration_host | length > 0
         - inventory_settings_present
         - not registration_target_supported
 
@@ -72,13 +98,15 @@
           - "{{ playbook_dir }}/scripts/semaphore_inventory.py"
           - add-host
           - "--host"
-          - "{{ target_host }}"
+          - "{{ registration_host }}"
           - "--address"
-          - "{{ target_host }}"
+          - "{{ registration_host }}"
           - "--group"
-          - "{{ target_group }}"
+          - "{{ registration_group_effective }}"
+          - "--user"
+          - "{{ registration_user }}"
           - "--port"
-          - "{{ inventory_port_effective }}"
+          - "{{ registration_port }}"
       environment:
         SEMAPHORE_URL: "{{ semaphore_url }}"
         SEMAPHORE_PROJECT_ID: "{{ semaphore_project_id }}"
@@ -89,6 +117,7 @@
         registration.stdout_lines | default([]) | first | default('') == 'changed'
       check_mode: false
       when:
+        - registration_host | length > 0
         - inventory_settings_complete
         - registration_target_supported
         - not ansible_check_mode
@@ -97,6 +126,7 @@
       ansible.builtin.debug:
         msg: "Check mode: the host was not added to the Semaphore inventory."
       when:
+        - registration_host | length > 0
         - inventory_settings_complete
         - registration_target_supported
         - ansible_check_mode
@@ -105,6 +135,7 @@
       ansible.builtin.debug:
         msg: "{{ registration.stdout_lines | default([]) }}"
       when:
+        - registration_host | length > 0
         - inventory_settings_complete
         - registration_target_supported
         - not ansible_check_mode

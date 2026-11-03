@@ -41,7 +41,7 @@
   community.general.ufw:
     rule: limit
     direction: in
-    port: "{{ ssh_port }}"
+    port: "{{ ssh_port_effective }}"
     proto: tcp
   when:
     - firewall_enabled | default(true) | bool
@@ -100,7 +100,7 @@
     content: |
       [Socket]
       ListenStream=
-      ListenStream={{ ssh_port }}
+      ListenStream={{ ssh_port_effective }}
     owner: root
     group: root
     mode: '0644'

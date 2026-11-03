@@ -286,8 +286,12 @@ def ensure_template(
                 if survey_vars is not None:
                     existing_vars = update_body.get("survey_vars") or []
                     desired_names = {var["name"] for var in survey_vars}
+                    preserved_names = {"fleet_host"} if name == "fleet" else set()
                     update_body["survey_vars"] = list(survey_vars) + [
-                        var for var in existing_vars if var.get("name") not in desired_names
+                        var
+                        for var in existing_vars
+                        if var.get("name") not in desired_names
+                        and var.get("name") in preserved_names
                     ]
                 if task_params is not None:
                     merged_task_params = dict(update_body.get("task_params") or {})
@@ -333,7 +337,8 @@ def ensure_fleet_host_survey(api: Semaphore, project_id: int) -> None:
         print("  exists")
         return
 
-    survey_vars.append(
+    survey_vars.insert(
+        0,
         {
             "name": "fleet_host",
             "title": "Target host",
@@ -341,7 +346,7 @@ def ensure_fleet_host_survey(api: Semaphore, project_id: int) -> None:
             "type": "enum",
             "required": False,
             "values": [{"name": "All linux hosts", "value": ""}],
-        }
+        },
     )
     template["survey_vars"] = survey_vars
     api.request("PUT", path, template)
@@ -369,7 +374,7 @@ def main() -> int:
     repo_url = env("SEMAPHORE_REPO_URL", "https://github.com/sysplore/harden-linux.git")
     branch = env("SEMAPHORE_REPO_BRANCH", "main")
     repo_name = env("SEMAPHORE_REPO_NAME", "harden-linux")
-    key_name = env("SEMAPHORE_KEY_NAME", "ansible-ssh")
+    key_name = env("SEMAPHORE_KEY_NAME", "Semaphore")
     ssh_login = env("SEMAPHORE_SSH_LOGIN", "ansible")
     ssh_key_file = Path(env("SEMAPHORE_SSH_KEY_FILE", "~/.ssh/id_ed25519")).expanduser()
     ssh_key_passphrase = env("SEMAPHORE_SSH_KEY_PASSPHRASE")
@@ -410,7 +415,7 @@ def main() -> int:
         if bootstrap_password:
             print("inventory: linux-bootstrap (would ensure)")
         print(f"environment: {env_name} (would ensure)")
-        print("environment vars: semaphore_url, semaphore_project_id, semaphore_inventory_id")
+        print("environment vars: semaphore_url, semaphore_project_id, semaphore_inventory_id, semaphore_ssh_login")
         print("environment secret: semaphore_api_token (would ensure)")
 
     api = Semaphore(base_url, token) if not args.dry_run else None
@@ -507,6 +512,7 @@ def main() -> int:
         "semaphore_url": base_url.rstrip("/"),
         "semaphore_project_id": str(project_id),
         "semaphore_inventory_id": str(int(inventory.get("id") or 1)),
+        "semaphore_ssh_login": ssh_login,
     }
     if ssh_public_key:
         environment_extra["ssh_public_key"] = ssh_public_key
@@ -516,24 +522,7 @@ def main() -> int:
     inv_id = int(inventory.get("id") or 1)
     repo_id = int(repo.get("id") or 1)
 
-    one_host_survey = [
-        {
-            "name": "target_host",
-            "title": "Server IP or hostname",
-            "description": "The server to harden.",
-            "type": "",
-            "required": True,
-        },
-        {
-            "name": "target_group",
-            "title": "Distribution",
-            "type": "enum",
-            "required": True,
-            "values": [
-                {"name": "Debian", "value": "debian"},
-                {"name": "Ubuntu", "value": "ubuntu"},
-            ],
-        },
+    common_survey = [
         {
             "name": "harden_profile",
             "title": "Hardening profile",
@@ -548,24 +537,17 @@ def main() -> int:
             ],
         },
         {
-            "name": "target_user",
-            "title": "SSH user",
-            "description": "Leave blank for ubuntu on Ubuntu, root on Debian.",
-            "type": "",
-            "required": False,
-        },
-        {
-            "name": "target_ssh_port",
-            "title": "SSH port",
-            "description": "Default 22. Opened in UFW before SSH changes.",
-            "type": "",
-            "required": False,
-        },
-        {
             "name": "harden_user",
-            "title": "Hardening username",
+            "title": "New hardening username",
             "description": "Account to create; blank = ansible.",
             "type": "",
+            "required": False,
+        },
+        {
+            "name": "ssh_port",
+            "title": "SSH port",
+            "description": "Blank = 22. A single selected fleet host is updated in the inventory.",
+            "type": "int",
             "required": False,
         },
         {
@@ -578,7 +560,7 @@ def main() -> int:
         {
             "name": "mail_to",
             "title": "Notification email",
-            "description": "Blank = email disabled; add later.",
+            "description": "Blank = email disabled (skip SMTP).",
             "type": "",
             "required": False,
         },
@@ -592,7 +574,7 @@ def main() -> int:
             "name": "mail_port",
             "title": "SMTP port",
             "description": "Blank = 587.",
-            "type": "",
+            "type": "int",
             "required": False,
         },
         {
@@ -629,13 +611,40 @@ def main() -> int:
         {
             "name": "mail_verify",
             "title": "Verify SMTP now",
-            "description": "No = save credentials without sending a test.",
+            "description": "No = save SMTP settings without sending a test (skip the SMTP check).",
             "type": "enum",
             "required": False,
             "values": [
                 {"name": "No", "value": "false"},
                 {"name": "Yes", "value": "true"},
             ],
+        },
+    ]
+
+    one_host_survey = [
+        {
+            "name": "target_host",
+            "title": "Server IP or hostname",
+            "description": "The server to harden.",
+            "type": "",
+            "required": True,
+        },
+        {
+            "name": "target_group",
+            "title": "Distribution",
+            "type": "enum",
+            "required": True,
+            "values": [
+                {"name": "Debian", "value": "debian"},
+                {"name": "Ubuntu", "value": "ubuntu"},
+            ],
+        },
+        {
+            "name": "target_user",
+            "title": "Current SSH user",
+            "description": "Leave blank for ubuntu on Ubuntu, root on Debian.",
+            "type": "",
+            "required": False,
         },
         {
             "name": "target_password",
@@ -650,7 +659,7 @@ def main() -> int:
             "type": "secret",
             "required": False,
         },
-    ]
+    ] + common_survey
 
     add_host_survey = [
         {
@@ -680,8 +689,8 @@ def main() -> int:
         },
         {
             "name": "inventory_user",
-            "title": "SSH user",
-            "description": "Blank = the inventory credential user (ansible).",
+            "title": "Current SSH user",
+            "description": "Blank = the Semaphore SSH key user.",
             "type": "",
             "required": False,
         },
@@ -694,21 +703,22 @@ def main() -> int:
         },
     ]
 
-    profile_survey = [
+    fleet_survey = [
         {
-            "name": "harden_profile",
-            "title": "Hardening profile",
-            "description": "Leave blank for baseline.",
-            "type": "enum",
+            "name": "ansible_user",
+            "title": "Current SSH user",
+            "description": "User used to connect now; blank = the inventory credential user.",
+            "type": "",
             "required": False,
-            "values": [
-                {"name": "Baseline", "value": "baseline"},
-                {"name": "NIST 800-53", "value": "nist-800-53"},
-                {"name": "BSI Grundschutz", "value": "bsi-grundschutz"},
-                {"name": "Strict", "value": "strict"},
-            ],
         },
-    ]
+        {
+            "name": "fleet_hosts",
+            "title": "Extra hosts or groups",
+            "description": "Comma-separated host patterns; overrides the Target host dropdown. Use for multiple hosts.",
+            "type": "",
+            "required": False,
+        },
+    ] + common_survey
 
     templates = [
         (
@@ -721,10 +731,10 @@ def main() -> int:
         ),
         (
             "fleet",
-            "main-playbook.yml",
+            "fleet-playbook.yml",
             [],
-            "Fleet: pick a host from the inventory. Use Dry run for check, uncheck to apply.",
-            profile_survey,
+            "Fleet: select one or more inventory hosts; bootstrap and harden. Use Dry run for check.",
+            fleet_survey,
             {"allow_override_limit": True},
         ),
         (

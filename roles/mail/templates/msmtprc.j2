@@ -1,7 +1,7 @@
 defaults
 auth {{ 'on' if mail_auth | bool else 'off' }}
 tls {{ 'on' if mail_tls | bool else 'off' }}
-tls_starttls {{ 'on' if mail_tls_starttls | bool else 'off' }}
+tls_starttls {{ 'on' if mail_tls_starttls_effective | bool else 'off' }}
 tls_trust_file /etc/ssl/certs/ca-certificates.crt
 logfile /var/log/msmtp
 

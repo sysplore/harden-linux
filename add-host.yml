@@ -48,7 +48,7 @@
           - "--group"
           - "{{ inventory_group }}"
           - "--user"
-          - "{{ inventory_user | default('', true) }}"
+          - "{{ inventory_user | default('', true) | default(semaphore_ssh_login | default('', true), true) }}"
           - "--port"
           - "{{ inventory_port_effective }}"
       environment:

@@ -1,7 +1,7 @@
 [sshd]
 enabled = true
 banaction = ufw
-port = {{ ssh_port }}
+port = {{ ssh_port_effective }}
 filter = sshd
 logpath = %(sshd_log)s
 maxretry = {{ fail2ban_maxretry }}

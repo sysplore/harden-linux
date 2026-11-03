@@ -13,7 +13,7 @@
   community.general.ufw:
     rule: limit
     direction: in
-    port: "{{ ssh_port }}"
+    port: "{{ ssh_port_effective }}"
     proto: tcp
   notify: reload ufw
 

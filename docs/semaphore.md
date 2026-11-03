@@ -163,21 +163,38 @@ through the `add-host` template. The `fleet` **Target host** dropdown is a
 native Semaphore host picker.
 
 1. Run `add-host`. Enter the server IP or hostname, pick Debian or Ubuntu, and
-   optionally override the address, SSH user and port.
+   optionally set the current SSH user, address override and SSH port.
 2. The playbook writes the host into the `linux-ansible` static YAML inventory
    through the Semaphore API and refreshes the `fleet` **Target host** dropdown.
-3. Run `fleet`, select the host, check **Dry run**, and review the diff.
+3. Run `fleet`. Select one host in **Target host**, or leave it at
+   **All linux hosts** and use **Extra hosts or groups** with comma-separated
+   patterns for several hosts. Set the current SSH user, new hardening user,
+   SSH port, profile and mail settings, then check **Dry run** and review.
 
-`harden-one` registers a server automatically after a successful hardening run,
-so a server normally has to be entered only once. It registers the target under
-the IP or hostname you entered; use `add-host` if you want a separate inventory
-name. The password is used for the first bootstrap and is not stored; after
-hardening the inventory's `ansible` key is used. `add-host` assumes the host
-already accepts that key, so use `harden-one` or `bootstrap` for a fresh
-server. The inventory key login (`SEMAPHORE_SSH_LOGIN`) must match the
-hardening user (`user_name`, default `ansible`). Semaphore 2.16 supports one
-SSH credential per inventory, so per-host passwords would require separate
-inventories.
+`fleet` runs the bootstrap requirements step before the hardening roles, so the
+new hardening username, the SSH port and the inventory key are applied on the
+selected hosts. The **Current SSH user** field overrides the inventory
+credential user for that run. When exactly one host is selected, the run writes
+the resulting `ansible_user` and SSH port back to the inventory; a multi-host
+run skips that single-host update, so use `add-host` for the individual
+inventory entries when changing a shared setting.
+
+The SMTP fields behave as in `harden-one`: leave **Notification email** blank to
+skip mail entirely, or set it and choose **Verify SMTP now = No** to configure
+mail without sending a test message. `open_inbound_tcp` is passed to the
+firewall role.
+
+`harden-one` remains the single-server path: IP, current user, password and all
+common settings in one form. It registers a server automatically after a
+successful hardening run, so a server normally has to be entered only once. It
+registers the target under the IP or hostname you entered; use `add-host` if you
+want a separate inventory name. The password is used for the first bootstrap and
+is not stored; after hardening the inventory's `Semaphore` key is used.
+`add-host` assumes the host already accepts that key, so use `harden-one` or
+`bootstrap` for a fresh server. The inventory host's `ansible_user` (or the key
+login, if set) must match the hardening user (`user_name`, default `ansible`).
+Semaphore 2.16 supports one SSH credential per inventory, so per-host passwords
+would require separate inventories.
 
 This needs an API token with project write access. The bootstrap stores
 `SEMAPHORE_RUNNER_API_TOKEN` (or `SEMAPHORE_API_TOKEN` when the former is
@@ -195,9 +212,10 @@ task history or from a running task. The dropdown lists up to every host in the
 inventory; for large fleets use the optional **Limit** field with a host
 pattern instead.
 
-Use the **Target host** dropdown or the optional **Limit** field to narrow a
-run. For production, run `fleet` with **Dry run** checked and review the diff in
-the task log. Run it again with Dry run unchecked to apply.
+Use the **Target host** dropdown for one host, **Extra hosts or groups** or the
+optional **Limit** field for several. For production, run `fleet` with
+**Dry run** checked and review the diff in the task log. Run it again with Dry
+run unchecked to apply.
 
 Notifications are configured per host or per Semaphore environment with the
 `notify_*` variables. Backends are `smtp`, `webhook`, `ntfy`, `gotify` and
