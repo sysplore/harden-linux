@@ -57,6 +57,8 @@
     line: "{{ item.line }}"
     backup: true
   loop:
+    - regexp: '^ALERTING_METHODS'
+      line: 'ALERTING_METHODS {{ "ALL" if mail_enabled | bool else "noemail" }};'
     - regexp: '^EMAIL_ADDRESSES'
       line: 'EMAIL_ADDRESSES {{ mail_to if mail_enabled | bool else "root@localhost" }};'
     - regexp: '^EXPECT_TCP_OPTIONS'
