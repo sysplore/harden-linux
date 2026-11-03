@@ -13,6 +13,8 @@
   hosts: localhost
   gather_facts: false
   vars:
+    target_ssh_port_effective: >-
+      {{ target_ssh_port | default('', true) | default(22, true) | int }}
     ssh_port_effective: >-
       {{ ssh_port | default('', true) | default(22, true) | int }}
     target_user_effective: >-
@@ -33,6 +35,7 @@
         ansible_host: "{{ target_host }}"
         ansible_user: "{{ target_user_effective }}"
         ansible_password: "{{ target_password | default('') }}"
+        ansible_port: "{{ target_ssh_port_effective }}"
         ansible_become_password: "{{ target_become_password | default(target_password | default(''), true) }}"
         ansible_become_method: ansible.builtin.sudo
         ssh_port: "{{ ssh_port_effective }}"

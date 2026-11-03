@@ -30,7 +30,8 @@ This is the simple path. In Semaphore:
    - **Distribution**: Debian or Ubuntu
    - **Hardening profile**: Baseline, NIST 800-53, BSI Grundschutz or Strict
    - **SSH user**: leave blank for `ubuntu` on Ubuntu or `root` on Debian
-   - **SSH port**: blank = 22; the new port is opened in UFW before SSH changes
+   - **Current SSH port**: optional; blank = 22; the port Ansible connects to first
+   - **New SSH port**: optional; blank = keep 22; opened in UFW; sshd restarts only after hardening finishes
    - **Hardening username**: the account to create; blank means `ansible`
    - **Inbound TCP ports**: extra ports to open; for a mail server use `25,465,587,993,995`
    - **Notification email**: blank disables email; can be added later
@@ -103,7 +104,7 @@ ports are not opened by default.
    `Semaphore`), and any `notify_*` variables you want.
 6. **Task Templates** → `fleet`: playbook `fleet-playbook.yml`, inventory
    `linux-ansible`, repository and environment as above. Choose the host,
-   current SSH user, new hardening user, SSH port and mail settings in the form.
+   current SSH user, new hardening user, new SSH port and mail settings in the form.
 7. Run `fleet`, select the host, check **Dry run**, and review the diff. Run it
    again with Dry run unchecked to apply. `harden-one` registers a server in the
    inventory after a successful run, so you normally enter an IP and password

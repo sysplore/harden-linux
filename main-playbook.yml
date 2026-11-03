@@ -5,7 +5,7 @@
   remote_user: "{{ ansible_user | default('', true) | default(omit, true) }}"
   become: true
   become_method: ansible.builtin.sudo
-  force_handlers: true
+  force_handlers: false
   any_errors_fatal: false
   serial: "{{ harden_serial | default('100%') }}"
   vars_files:

@@ -560,16 +560,8 @@ def main() -> int:
     if ssh_public_key:
         environment_extra["ssh_public_key"] = ssh_public_key
     environment = ensure_environment(api, project_id, env_name, secrets, environment_extra, args.dry_run) if api else {"id": 0, "name": env_name}
-    one_host_env_name = f"{env_name}-one"
-    one_host_secrets = [secret for secret in secrets if secret["name"] != "ansible_become_password"]
-    one_host_environment = (
-        ensure_environment(api, project_id, one_host_env_name, one_host_secrets, environment_extra, args.dry_run)
-        if api
-        else {"id": 0, "name": one_host_env_name}
-    )
 
     env_id = int(environment.get("id") or 1)
-    one_host_env_id = int(one_host_environment.get("id") or 1)
     inv_id = int(inventory.get("id") or 1)
     repo_id = int(repo.get("id") or 1)
 
@@ -596,8 +588,8 @@ def main() -> int:
         },
         {
             "name": "ssh_port",
-            "title": "SSH port",
-            "description": "Blank = 22. A single selected fleet host is updated in the inventory.",
+            "title": "New SSH port",
+            "description": "Blank = keep 22. Applied with the final SSH restart after hardening.",
             "type": "int",
             "required": False,
         },
@@ -708,6 +700,13 @@ def main() -> int:
             "title": "Sudo password",
             "description": "Defaults to the SSH password.",
             "type": "secret",
+            "required": False,
+        },
+        {
+            "name": "target_ssh_port",
+            "title": "Current SSH port",
+            "description": "Blank = 22. Port Ansible connects to before hardening.",
+            "type": "int",
             "required": False,
         },
     ] + common_survey
@@ -827,7 +826,7 @@ def main() -> int:
             print("template: bootstrap (skipped: set SEMAPHORE_BOOTSTRAP_PASSWORD to create it)")
             continue
         template_inventory = int(bootstrap_inventory["id"] or 1) if name == "bootstrap" else inv_id
-        template_environment = one_host_env_id if name == "harden-one" else env_id
+        template_environment = env_id
         if api:
             ensure_template(
                 api,

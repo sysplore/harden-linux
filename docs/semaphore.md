@@ -63,11 +63,11 @@ The script creates these templates:
 - `maintenance-report` — Lynis and AIDE only
 - `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing
 
-The bootstrap creates two environments: `harden` for fleet and managed sudo,
-and `harden-one` for the single-host path. `harden-one` deliberately omits
-`ansible_become_password`, so the form's target sudo password is used for the
-initial Ubuntu bootstrap; the hardening user's managed password is still stored
-as `user_pw` and used for fleet.
+The bootstrap creates one environment (`harden`) shared by both templates. The
+form's current SSH user/password and sudo password are used for the initial
+connection; the hardening user's managed password is stored as
+`ansible_become_password` and `user_pw` for fleet. The one-host environment split
+was removed.
 
 It does not create schedules or approvals; add those in the Semaphore UI. Use
 the **Target host** dropdown (or the **Limit** field) for the first run.
@@ -174,8 +174,9 @@ native Semaphore host picker.
    through the Semaphore API and refreshes the `fleet` **Target host** dropdown.
 3. Run `fleet`. Select one host in **Target host**, or leave it at
    **All linux hosts** and use **Extra hosts or groups** with comma-separated
-   patterns for several hosts. Set the current SSH user, new hardening user,
-   SSH port, profile and mail settings, then check **Dry run** and review.
+   patterns for several hosts. The current SSH port comes from the inventory;
+   set the new SSH port, new hardening user, profile and mail settings, then
+   check **Dry run** and review.
 
 `fleet` runs the bootstrap requirements step before the hardening roles, so the
 new hardening username, the SSH port and the inventory key are applied on the
@@ -191,7 +192,10 @@ mail without sending a test message. `open_inbound_tcp` is passed to the
 firewall role.
 
 `harden-one` remains the single-server path: IP, current user, password and all
-common settings in one form. The initial bootstrap can use `root` as the current
+common settings in one form. It takes an optional **Current SSH port** for the
+first connection and an optional **New SSH port** for the final sshd port; the
+new port is opened in UFW before the change, and sshd restarts only once, after
+the hardening tasks finish. The initial bootstrap can use `root` as the current
 user; the new hardening user receives the SSH key and the managed password.
 After a successful run the inventory stores the hardening user and the effective
 port, so `fleet` can run as that user and use the managed password for sudo.
