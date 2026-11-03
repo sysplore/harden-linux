@@ -97,6 +97,10 @@
   notify: reload ufw
   when: psad_enabled | bool
 
+- name: Apply UFW rules before psad startup checks
+  ansible.builtin.meta: flush_handlers
+  when: psad_enabled | bool
+
 - name: Update psad signatures
   ansible.builtin.command: psad --sig-update
   changed_when: false
@@ -106,11 +110,24 @@
   when: psad_enabled | bool
 
 - name: Enable and start psad
-  ansible.builtin.systemd:
-    name: psad
-    enabled: true
-    state: started
-  when: psad_enabled | bool
+  block:
+    - name: Enable and start psad
+      ansible.builtin.systemd:
+        name: psad
+        enabled: true
+        state: started
+      when: psad_enabled | bool
+  rescue:
+    - name: Print the psad journal for the failure above
+      ansible.builtin.command: journalctl -u psad -n 50 --no-pager
+      changed_when: false
+      when: psad_enabled | bool
+    - name: Fail with the psad cause visible in the journal output above
+      ansible.builtin.fail:
+        msg: >-
+          psad failed to start; the exact cause is in the journal output
+          printed above in this task's log.
+      when: psad_enabled | bool
 
 - name: Configure fail2ban defaults
   ansible.builtin.template:
