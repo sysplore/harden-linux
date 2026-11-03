@@ -8,14 +8,7 @@
     mode: '0755'
   loop:
     - /etc/aide/aide.conf.d
-
-- name: Ensure the AIDE log directory is writable by the aide user
-  ansible.builtin.file:
-    path: /var/log/aide
-    state: directory
-    owner: aide
-    group: adm
-    mode: '0750'
+    - /var/log/aide
 
 - name: Remove the invalid AIDE include directive
   ansible.builtin.lineinfile:
@@ -56,9 +49,15 @@
   register: aide_db
 
 - name: Initialize the AIDE database
-  ansible.builtin.command: aideinit -y -f
+  ansible.builtin.shell: |
+    set -euo pipefail
+    rm -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db.new.gz
+    aide --init --config {{ aide_config }}
+    new_db="$(find /var/lib/aide -maxdepth 1 -name 'aide.db.new*' -print -quit)"
+    test -n "$new_db"
+    mv "$new_db" {{ aide_database }}
   args:
-    creates: "{{ aide_database }}"
+    executable: /bin/bash
   register: aide_init
   changed_when: aide_init.rc == 0
   failed_when: false
