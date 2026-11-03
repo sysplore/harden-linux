@@ -1,8 +1,7 @@
 ---
 # Fleet hardening for inventory hosts. The requirements play is idempotent and
 # makes harden_user and the SSH key effective before the hardening roles run.
-# register-host updates the inventory when exactly one host was selected.
+# main-playbook registers each host after its handlers have run.
 
 - import_playbook: requirements-playbook.yml  # noqa: name[play]
 - import_playbook: main-playbook.yml  # noqa: name[play]
-- import_playbook: register-host.yml  # noqa: name[play]

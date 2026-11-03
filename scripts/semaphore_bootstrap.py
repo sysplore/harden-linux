@@ -732,7 +732,7 @@ def main() -> int:
         (
             "harden-one",
             "harden-one.yml",
-            [],
+            ["--extra-vars", "inventory_registration_enabled=true"],
             "Add one server by IP and password, bootstrap it, and harden it.",
             one_host_survey,
             None,
@@ -740,7 +740,7 @@ def main() -> int:
         (
             "fleet",
             "fleet-playbook.yml",
-            [],
+            ["--extra-vars", "inventory_registration_enabled=true"],
             "Fleet: select one or more inventory hosts; bootstrap and harden. Use Dry run for check.",
             fleet_survey,
             {"allow_override_limit": True},

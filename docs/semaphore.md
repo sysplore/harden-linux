@@ -174,10 +174,10 @@ native Semaphore host picker.
 `fleet` runs the bootstrap requirements step before the hardening roles, so the
 new hardening username, the SSH port and the inventory key are applied on the
 selected hosts. The **Current SSH user** field overrides the inventory
-credential user for that run. When exactly one host is selected, the run writes
-the resulting `ansible_user` and SSH port back to the inventory; a multi-host
-run skips that single-host update, so use `add-host` for the individual
-inventory entries when changing a shared setting.
+credential user for that run. After a successful hardening run, every selected
+host is registered in the inventory with its hardening user and SSH port; this
+happens after the SSH handlers have run, and a failed run does not update the
+inventory.
 
 The SMTP fields behave as in `harden-one`: leave **Notification email** blank to
 skip mail entirely, or set it and choose **Verify SMTP now = No** to configure
@@ -189,10 +189,12 @@ common settings in one form. It registers a server automatically after a
 successful hardening run, so a server normally has to be entered only once. It
 registers the target under the IP or hostname you entered; use `add-host` if you
 want a separate inventory name. The password is used for the first bootstrap and
-is not stored; after hardening the inventory's `Semaphore` key is used.
-`add-host` assumes the host already accepts that key, so use `harden-one` or
-`bootstrap` for a fresh server. The inventory host's `ansible_user` (or the key
-login, if set) must match the hardening user (`user_name`, default `ansible`).
+is not stored; after hardening the inventory keeps the current SSH user and the
+Semaphore key. The new hardening user is created and receives the key, but it is
+not automatically made the inventory user because a key-only account may not
+have passwordless sudo. Set **Current SSH user** to that account once it has
+sudo access, or keep using an account that works. `add-host` assumes the host
+already accepts the key, so use `harden-one` or `bootstrap` for a fresh server.
 Semaphore 2.16 supports one SSH credential per inventory, so per-host passwords
 would require separate inventories.
 

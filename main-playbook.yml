@@ -149,3 +149,56 @@
         msg: "Reboot required to finish updates."
       when: reboot_required_file.stat.exists
       tags: [verify]
+
+    - name: Apply pending handlers before registration
+      ansible.builtin.meta: flush_handlers
+      tags: [always]
+
+    - name: Register the host in the Semaphore inventory
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/scripts/semaphore_inventory.py"
+          - add-host
+          - "--host"
+          - "{{ inventory_hostname }}"
+          - "--address"
+          - "{{ ansible_host | default(inventory_hostname, true) }}"
+          - "--group"
+          - "{{ target_group if (target_group is defined and target_group | length > 0)
+               else ('debian' if 'debian' in (hostvars[inventory_hostname].group_names | default([]))
+                     else 'ubuntu') }}"
+          - "--user"
+          - "{{ ansible_user | default('', true)
+               | default(harden_user | default('', true), true)
+               | default(user_name | default('', true), true)
+               | default(semaphore_ssh_login | default('', true), true)
+               | default('ansible', true) }}"
+          - "--port"
+          - "{{ ssh_port_effective }}"
+      environment:
+        SEMAPHORE_URL: "{{ semaphore_url | default('') }}"
+        SEMAPHORE_PROJECT_ID: "{{ semaphore_project_id | default('') }}"
+        SEMAPHORE_INVENTORY_ID: "{{ semaphore_inventory_id | default('') }}"
+        SEMAPHORE_INVENTORY_CHECK: "false"
+      delegate_to: localhost
+      register: inventory_registration
+      changed_when: >-
+        inventory_registration.stdout_lines | default([]) | first | default('') == 'changed'
+      when:
+        - inventory_registration_enabled | default(false) | bool
+        - not ansible_check_mode
+        - semaphore_url | default('', true) | length > 0
+        - semaphore_project_id | default('', true) | length > 0
+        - semaphore_inventory_id | default('', true) | length > 0
+        - (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
+          or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
+      tags: [register]
+
+    - name: Show the inventory registration result
+      ansible.builtin.debug:
+        msg: "{{ inventory_registration.stdout_lines | default([]) }}"
+      when:
+        - inventory_registration is defined
+        - inventory_registration.stdout_lines | default([]) | length > 0
+      tags: [register]
