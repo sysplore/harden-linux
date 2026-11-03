@@ -13,8 +13,10 @@
     owner: root
     group: root
     mode: '0640'
-    retries: 3
-    delay: 5
+  register: auditd_rules_download
+  retries: 3
+  delay: 5
+  until: auditd_rules_download is succeeded
 
 - name: Watch security-critical paths
   ansible.builtin.copy:
