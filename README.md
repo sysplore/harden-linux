@@ -146,7 +146,7 @@ Profiles: `baseline.yml`, `nist-800-53.yml`, `bsi-grundschutz.yml`, `strict.yml`
 | SSH | `ssh` | drop-in config, key-only auth, MFA-ready, modern KEX/ciphers/MACs, `sshd -t` validation |
 | Passwords / lockout | `password_quality` | pwquality (NIST 800-63B-4 aligned), faillock |
 | Updates | `unattended_upgrades` | distro-specific security origins, conffile-safe upgrades, reboot window |
-| Firewall / IDS | `firewall` | UFW default-deny, psad, fail2ban, notifications |
+| Firewall | `firewall` | UFW default-deny (nftables backend), fail2ban, notifications |
 | Mail | `mail` | msmtp, aliases, non-fatal test message |
 | Notifications | `notify` | SMTP, webhook, ntfy, Gotify, local-only |
 | Malware | `clamav`, `rkhunter` | scheduled scans, logs, notifications |
@@ -310,8 +310,8 @@ If `mail_to` is empty and no webhook/ntfy/gotify target is configured, the
 notifier is installed in local-only mode. Everything still logs locally, and
 the reboot-required check is sent through the configured backend.
 
-`psad` and `unattended-upgrades` keep their native mail hooks. With no SMTP
-they log locally; the notifier covers the reboot-required signal and all other
+`unattended-upgrades` keeps its native mail hook. With no SMTP it logs
+locally; the notifier covers the reboot-required signal and all other
 alert sources.
 
 If `mail_to` is set, `mail_smtp_server` and `mail_pw` are required and validated
@@ -356,7 +356,7 @@ On a host after a run:
 ```bash
 sshd -T | grep -E 'permitrootlogin|passwordauthentication|kbdinteractiveauthentication|authenticationmethods'
 ufw status verbose
-systemctl is-active auditd fail2ban psad clamav-freshclam
+systemctl is-active auditd fail2ban clamav-freshclam
 /usr/local/sbin/harden-notify --test
 unattended-upgrade --dry-run
 lynis audit system

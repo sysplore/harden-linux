@@ -3,23 +3,6 @@
   ansible.builtin.command: ufw reload
   changed_when: false
 
-- name: restart psad
-  block:
-    - name: Restart psad
-      ansible.builtin.systemd:
-        name: psad
-        state: restarted
-  rescue:
-    - name: Print the psad journal for the failure above
-      ansible.builtin.command: journalctl -u psad -n 50 --no-pager
-      changed_when: false
-
-    - name: Fail with the psad cause visible in the journal output above
-      ansible.builtin.fail:
-        msg: >-
-          psad failed to (re)start; the exact cause is in the journal output
-          printed above in this handler's log.
-
 - name: restart fail2ban
   block:
     - name: Validate fail2ban configuration

@@ -45,8 +45,8 @@
     - name: Warn when notification email is set without SMTP
       ansible.builtin.debug:
         msg: >-
-          mail_to is set but mail_smtp_server or mail_pw is empty; email and
-          psad email alerts are disabled.
+          mail_to is set but mail_smtp_server or mail_pw is empty; email
+          notifications are disabled.
       when:
         - harden_features.mail | default(true) | bool
         - mail_to | default('', true) | length > 0

@@ -183,16 +183,6 @@ firewall_mail_ports:
   - 587
   - "{{ mail_port | default('', true) | default(587, true) }}"
 firewall_ufw_logging: low
-psad_enabled: true
-psad_enable_auto_ids: true
-psad_auto_ids_danger_level: 5
-# psad email alerts are disabled entirely when mail is not configured.
-# Only email for danger level 4 and above when mail is configured.
-psad_email_alert_danger_level: 4
-# Max emails per source IP; 0 means unlimited.
-psad_email_limit: 10
-# Emails for automatic blocks (separate from scan alerts).
-psad_auto_ids_emails: true
 fail2ban_enabled: true
 fail2ban_maxretry: 5
 fail2ban_bantime: 1h

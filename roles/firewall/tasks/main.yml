@@ -1,35 +1,42 @@
 ---
-- name: Detect the iptables backend
-  ansible.builtin.command: iptables --version
-  register: firewall_iptables_version
-  changed_when: false
-  check_mode: false
-  when: psad_enabled | bool
+- name: Remove psad and its orphaned dependencies
+  ansible.builtin.apt:
+    name: psad
+    state: absent
+    purge: true
+    autoremove: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
 
-- name: Stat the legacy iptables binaries
-  ansible.builtin.stat:
-    path: "/usr/sbin/{{ item }}-legacy"
-  loop:
-    - iptables
-    - ip6tables
-  register: firewall_legacy_bins
-  when: psad_enabled | bool
-
-- name: Use the iptables-legacy backend for psad
+- name: Read the iptables alternatives state
   ansible.builtin.command:
     argv:
       - update-alternatives
-      - --set
+      - --query
+      - "{{ item }}"
+  loop:
+    - iptables
+    - ip6tables
+  register: firewall_alternatives
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Restore the default iptables backend
+  ansible.builtin.command:
+    argv:
+      - update-alternatives
+      - --auto
       - "{{ item.item }}"
-      - "/usr/sbin/{{ item.item }}-legacy"
-  loop: "{{ firewall_legacy_bins.results | default([]) }}"
+  loop: "{{ firewall_alternatives.results | default([]) }}"
   loop_control:
     label: "{{ item.item | default('') }}"
-  when:
-    - psad_enabled | bool
-    - "'nf_tables' in (firewall_iptables_version.stdout | default(''))"
-    - item.stat.exists | default(false)
   changed_when: true
+  when:
+    - item.rc is defined
+    - item.rc == 0
+    - "'manual' in (item.stdout | default(''))"
+    - "'legacy' in (item.stdout | default(''))"
 
 - name: Configure UFW default policies
   community.general.ufw:
@@ -82,87 +89,15 @@
     logging: "{{ firewall_ufw_logging }}"
   notify: reload ufw
 
-- name: Configure psad
-  ansible.builtin.lineinfile:
-    path: /etc/psad/psad.conf
-    regexp: "{{ item.regexp }}"
-    line: "{{ item.line }}"
-    backup: true
-  loop:
-    - regexp: '^ALERTING_METHODS'
-      line: 'ALERTING_METHODS {{ "ALL" if mail_enabled | bool else "noemail" }};'
-    - regexp: '^EMAIL_ADDRESSES'
-      line: 'EMAIL_ADDRESSES {{ mail_to if mail_enabled | bool else "root@localhost" }};'
-    - regexp: '^EXPECT_TCP_OPTIONS'
-      line: 'EXPECT_TCP_OPTIONS Y;'
-    - regexp: '^ENABLE_PSADWATCHD'
-      line: 'ENABLE_PSADWATCHD Y;'
-    - regexp: '^ENABLE_AUTO_IDS '
-      line: 'ENABLE_AUTO_IDS {{ "Y" if psad_enable_auto_ids | bool else "N" }};'
-    - regexp: '^ENABLE_AUTO_IDS_EMAILS'
-      line: 'ENABLE_AUTO_IDS_EMAILS {{ "Y" if (psad_auto_ids_emails | bool and mail_enabled | bool) else "N" }};'
-    - regexp: '^AUTO_IDS_DANGER_LEVEL'
-      line: 'AUTO_IDS_DANGER_LEVEL {{ psad_auto_ids_danger_level }};'
-    - regexp: '^EMAIL_ALERT_DANGER_LEVEL'
-      line: 'EMAIL_ALERT_DANGER_LEVEL {{ psad_email_alert_danger_level }};'
-    - regexp: '^EMAIL_LIMIT'
-      line: 'EMAIL_LIMIT {{ psad_email_limit }};'
-    - regexp: '^HOSTNAME'
-      line: 'HOSTNAME {{ ansible_hostname }};'
-  notify: restart psad
-  when: psad_enabled | bool
-
-- name: Log blocked traffic for psad
+- name: Remove the psad logging block from UFW rules
   ansible.builtin.blockinfile:
     path: "{{ item }}"
-    insertbefore: "COMMIT"
     marker: "# {mark} ANSIBLE MANAGED BLOCK - psad"
-    block: |
-      # log all traffic so psad can analyze
-      -A INPUT -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
-      -A FORWARD -j LOG --log-tcp-options --log-prefix "[IPTABLES] "
-    backup: true
-    create: true
+    state: absent
   loop:
     - /etc/ufw/before.rules
     - /etc/ufw/before6.rules
   notify: reload ufw
-  when: psad_enabled | bool
-
-- name: Reload UFW before psad startup checks
-  ansible.builtin.command: ufw reload
-  changed_when: false
-  when:
-    - psad_enabled | bool
-    - not ansible_check_mode
-
-- name: Update psad signatures
-  ansible.builtin.command: psad --sig-update
-  changed_when: false
-  failed_when: false
-  retries: 2
-  delay: 5
-  when: psad_enabled | bool
-
-- name: Enable and start psad
-  block:
-    - name: Enable and start psad
-      ansible.builtin.systemd:
-        name: psad
-        enabled: true
-        state: started
-      when: psad_enabled | bool
-  rescue:
-    - name: Print the psad journal for the failure above
-      ansible.builtin.command: journalctl -u psad -n 50 --no-pager
-      changed_when: false
-      when: psad_enabled | bool
-    - name: Fail with the psad cause visible in the journal output above
-      ansible.builtin.fail:
-        msg: >-
-          psad failed to start; the exact cause is in the journal output
-          printed above in this task's log.
-      when: psad_enabled | bool
 
 - name: Configure fail2ban defaults
   ansible.builtin.template:

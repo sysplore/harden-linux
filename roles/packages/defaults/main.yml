@@ -16,7 +16,6 @@ packages_logging:
 packages_firewall:
   - ufw
   - fail2ban
-  - psad
 packages_password:
   - libpam-pwquality
   - cracklib-runtime
