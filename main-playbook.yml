@@ -7,6 +7,7 @@
   become_method: ansible.builtin.sudo
   force_handlers: false
   any_errors_fatal: false
+  gather_facts: false
   serial: "{{ harden_serial | default('100%') }}"
   vars:
     user_pw_effective: >-
@@ -30,6 +31,10 @@
         ansible_become_exe: /usr/bin/sudo.ws
       become: false
       when: sudo_ws_binary.stat.exists | bool
+
+    - name: Gather facts with the resolved sudo binary
+      ansible.builtin.setup:
+      become: true
 
     - name: Assert supported platform
       ansible.builtin.assert:

@@ -1,7 +1,7 @@
 ---
 - name: Bootstrap a Debian or Ubuntu server
   hosts: "{{ fleet_hosts | default('', true) | default(fleet_host | default('linux', true), true) }}"
-  gather_facts: true
+  gather_facts: false
   vars:
     user_pw_effective: >-
       {{ harden_user_password | default('', true)
@@ -25,6 +25,10 @@
         ansible_become_exe: /usr/bin/sudo.ws
       become: false
       when: sudo_ws_binary.stat.exists | bool
+
+    - name: Gather facts with the resolved sudo binary
+      ansible.builtin.setup:
+      become: true
 
     - name: Assert supported platform
       ansible.builtin.assert:
