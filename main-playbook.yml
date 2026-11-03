@@ -34,15 +34,15 @@
       when: ansible_user | default('') == 'root'
       tags: [always]
 
-    - name: Validate mail settings when mail is enabled
-      ansible.builtin.assert:
-        that:
-          - mail_smtp_server | length > 0
-          - mail_pw | length > 0
-        fail_msg: "mail_to is set but mail_smtp_server or mail_pw is empty. Set them or clear mail_to."
+    - name: Warn when notification email is set without SMTP
+      ansible.builtin.debug:
+        msg: >-
+          mail_to is set but mail_smtp_server or mail_pw is empty; email and
+          psad email alerts are disabled.
       when:
-        - mail_enabled | bool
         - harden_features.mail | default(true) | bool
+        - mail_to | default('', true) | length > 0
+        - not (mail_enabled | bool)
       tags: [always]
 
   roles:

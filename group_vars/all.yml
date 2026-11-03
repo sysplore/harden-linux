@@ -60,7 +60,11 @@ mail_user: "{{ mail_from }}"
 mail_pw: ""                       # vault this
 # Send a test message after configuring msmtp. Disable while SMTP is blocked.
 mail_verify: false
-mail_enabled: "{{ (harden_features.mail | default(true) | bool) and (mail_to | length > 0) }}"
+mail_enabled: >-
+  {{ (harden_features.mail | default(true) | bool)
+     and (mail_to | default('', true) | length > 0)
+     and (mail_smtp_server | default('', true) | length > 0)
+     and (mail_pw | default('', true) | length > 0) }}
 
 # ---------------------------------------------------------------------------
 # Notifications (SMTP is optional)
