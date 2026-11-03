@@ -1,0 +1,46 @@
+---
+# Read-only host diagnostics used while bringing a host under management.
+- name: Host diagnostics
+  hosts: "{{ fleet_hosts | default('', true) | default(fleet_host | default('linux', true), true) }}"
+  gather_facts: false
+  become: true
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Read listening sockets
+      ansible.builtin.command: ss -ltnp
+      register: listeners
+      changed_when: false
+      failed_when: false
+
+    - name: Read UFW status
+      ansible.builtin.command: ufw status verbose
+      register: ufw
+      changed_when: false
+      failed_when: false
+
+    - name: Read fail2ban status
+      ansible.builtin.command: fail2ban-client status sshd
+      register: fail2ban
+      changed_when: false
+      failed_when: false
+
+    - name: Read psad status
+      ansible.builtin.command: systemctl status psad --no-pager
+      register: psad_status
+      changed_when: false
+      failed_when: false
+
+    - name: Read psad journal
+      ansible.builtin.command: journalctl -u psad --no-pager -n 80
+      register: psad_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Show diagnostics
+      ansible.builtin.debug:
+        msg:
+          listeners: "{{ listeners.stdout_lines | default([]) }}"
+          ufw: "{{ ufw.stdout_lines | default([]) }}"
+          fail2ban: "{{ fail2ban.stdout_lines | default([]) }}"
+          psad_status: "{{ psad_status.stdout_lines | default([]) }}"
+          psad_journal: "{{ psad_journal.stdout_lines | default([]) }}"
