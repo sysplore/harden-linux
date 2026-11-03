@@ -333,8 +333,16 @@ def ensure_fleet_host_survey(api: Semaphore, project_id: int) -> None:
     path = f"/api/project/{project_id}/templates/{fleet['id']}"
     template = api.get(path)
     survey_vars = template.get("survey_vars") or []
-    if any(var.get("name") == "fleet_host" for var in survey_vars):
-        print("  exists")
+    fleet_var = next((var for var in survey_vars if var.get("name") == "fleet_host"), None)
+    if fleet_var:
+        if survey_vars[0] is fleet_var:
+            print("  exists")
+            return
+        survey_vars.remove(fleet_var)
+        survey_vars.insert(0, fleet_var)
+        template["survey_vars"] = survey_vars
+        api.request("PUT", path, template)
+        print("  moved to the top")
         return
 
     survey_vars.insert(
