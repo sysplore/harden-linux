@@ -220,6 +220,7 @@ def ensure_environment(
                     secret.get("name"): secret.get("id")
                     for secret in (detail.get("secrets") or [])
                 }
+                environment_vars["semaphore_environment_id"] = str(item["id"])
                 body: Dict[str, Any] = {
                     "id": item["id"],
                     "name": name,
@@ -242,6 +243,18 @@ def ensure_environment(
         body["secrets"] = secrets
     item = api.post(path, body)
     print(f"  created (id={item['id']})")
+    environment_vars["semaphore_environment_id"] = str(item["id"])
+    api.request(
+        "PUT",
+        f"{path}/{item['id']}",
+        {
+            "id": item["id"],
+            "name": name,
+            "project_id": project_id,
+            "json": json.dumps(environment_vars),
+            "env": item.get("env") or "{}",
+        },
+    )
     return item
 
 

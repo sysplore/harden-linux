@@ -31,6 +31,7 @@ DISTRIBUTIONS = ("debian", "ubuntu")
 FLEET_TEMPLATE_NAME = "fleet"
 FLEET_SURVEY_VAR = "fleet_host"
 ALL_HOSTS_LABEL = "All linux hosts"
+USER_PW_SECRET = "user_pw"
 
 
 def env(*names: str, default: str = "") -> str:
@@ -328,6 +329,59 @@ def sync_hosts(args: argparse.Namespace) -> int:
     return 0
 
 
+def find_environment(api: SemaphoreAPI, project_id: int, inventory_id: int) -> str:
+    for item in api.get(f"/api/project/{project_id}/environment?sort=name&order=asc") or []:
+        detail = api.get(f"/api/project/{project_id}/environment/{item['id']}")
+        payload = detail.get("json")
+        payload = json.loads(payload) if isinstance(payload, str) else (payload or {})
+        if str(payload.get("semaphore_inventory_id") or "") == str(inventory_id):
+            return str(item["id"])
+    raise InventoryError(
+        "could not identify the harden environment; "
+        "set semaphore_environment_id in the environment JSON"
+    )
+
+
+def store_password(args: argparse.Namespace) -> int:
+    api, project_id, inventory_id = read_settings()
+    password = env("SEMAPHORE_USER_PW")
+    if not password:
+        raise InventoryError("SEMAPHORE_USER_PW is not set; nothing to store")
+    env_id = (args.environment or "").strip()
+    if env_id and not env_id.isdigit():
+        raise InventoryError("--environment must be the numeric Semaphore environment id")
+    if not env_id:
+        env_id = find_environment(api, project_id, inventory_id)
+    path = f"/api/project/{project_id}/environment/{env_id}"
+    detail = api.get(path)
+    secrets = [dict(secret) for secret in (detail.get("secrets") or [])]
+    for secret in secrets:
+        if secret.get("name") == USER_PW_SECRET:
+            secret["secret"] = password
+            secret["type"] = "var"
+            secret["operation"] = "update"
+            break
+    else:
+        secrets.append(
+            {"name": USER_PW_SECRET, "type": "var", "secret": password, "operation": "create"}
+        )
+    if args.check:
+        print("would-change")
+        print(f"would store the hardening user password in environment {args.environment}")
+        return 0
+    body = {
+        "id": detail["id"],
+        "name": detail["name"],
+        "project_id": detail["project_id"],
+        "json": detail.get("json") or "{}",
+        "secrets": secrets,
+    }
+    api.put(path, body)
+    print("changed")
+    print(f"stored the hardening user password in environment {args.environment}")
+    return 0
+
+
 def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Manage the Semaphore hardening inventory.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -342,6 +396,14 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
 
     sync = subparsers.add_parser("sync", help="refresh the fleet host dropdown from the inventory")
     sync.add_argument("--check", action="store_true", help="report the change without writing it")
+
+    store = subparsers.add_parser(
+        "store-password", help="store the hardening user password as an environment secret"
+    )
+    store.add_argument(
+        "--environment", default="", help="Semaphore environment id (default: auto-detect)"
+    )
+    store.add_argument("--check", action="store_true", help="report the change without writing it")
 
     args = parser.parse_args(argv)
     if args.command == "add-host":
@@ -358,6 +420,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             return add_host(args)
         if args.command == "sync":
             return sync_hosts(args)
+        if args.command == "store-password":
+            return store_password(args)
     except InventoryError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

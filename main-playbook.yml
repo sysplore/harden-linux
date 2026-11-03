@@ -9,6 +9,9 @@
   any_errors_fatal: false
   serial: "{{ harden_serial | default('100%') }}"
   vars:
+    user_pw_effective: >-
+      {{ harden_user_password | default('', true)
+         | default(user_pw | default('', true), true) }}
     ansible_become_password: >-
       {{ target_become_password | default('', true)
          | default(harden_user_password | default('', true), true)
@@ -195,6 +198,31 @@
         - semaphore_url | default('', true) | length > 0
         - semaphore_project_id | default('', true) | length > 0
         - semaphore_inventory_id | default('', true) | length > 0
+        - (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
+          or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
+      tags: [register]
+
+    - name: Store the hardening user password for future runs
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/scripts/semaphore_inventory.py"
+          - store-password
+      environment:
+        SEMAPHORE_URL: "{{ semaphore_url | default('') }}"
+        SEMAPHORE_PROJECT_ID: "{{ semaphore_project_id | default('') }}"
+        SEMAPHORE_INVENTORY_ID: "{{ semaphore_inventory_id | default('') }}"
+        SEMAPHORE_USER_PW: "{{ user_pw_effective }}"
+      delegate_to: localhost
+      register: password_storage
+      changed_when: >-
+        password_storage.stdout_lines | default([]) | first | default('') == 'changed'
+      when:
+        - inventory_registration_enabled | default(false) | bool
+        - not ansible_check_mode
+        - semaphore_url | default('', true) | length > 0
+        - semaphore_project_id | default('', true) | length > 0
+        - user_pw_effective | default('', true) | length > 0
         - (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
           or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
       tags: [register]
