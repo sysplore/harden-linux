@@ -1,4 +1,16 @@
 ---
+- name: Check whether psad is installed
+  ansible.builtin.command:
+    argv:
+      - dpkg-query
+      - -W
+      - -f=${Status}
+      - psad
+  register: firewall_psad_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Remove psad and its orphaned dependencies
   ansible.builtin.apt:
     name: psad
@@ -7,6 +19,7 @@
     autoremove: true
   environment:
     DEBIAN_FRONTEND: noninteractive
+  when: "'install ok installed' in (firewall_psad_status.stdout | default(''))"
 
 - name: Read the iptables alternatives state
   ansible.builtin.command:
