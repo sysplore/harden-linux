@@ -1,4 +1,36 @@
 ---
+- name: Detect the iptables backend
+  ansible.builtin.command: iptables --version
+  register: firewall_iptables_version
+  changed_when: false
+  check_mode: false
+  when: psad_enabled | bool
+
+- name: Stat the legacy iptables binaries
+  ansible.builtin.stat:
+    path: "/usr/sbin/{{ item }}-legacy"
+  loop:
+    - iptables
+    - ip6tables
+  register: firewall_legacy_bins
+  when: psad_enabled | bool
+
+- name: Use the iptables-legacy backend for psad
+  ansible.builtin.command:
+    argv:
+      - update-alternatives
+      - --set
+      - "{{ item.item }}"
+      - "/usr/sbin/{{ item.item }}-legacy"
+  loop: "{{ firewall_legacy_bins.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('') }}"
+  when:
+    - psad_enabled | bool
+    - "'nf_tables' in (firewall_iptables_version.stdout | default(''))"
+    - item.stat.exists | default(false)
+  changed_when: true
+
 - name: Configure UFW default policies
   community.general.ufw:
     policy: "{{ item.policy }}"
