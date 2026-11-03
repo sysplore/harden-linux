@@ -14,7 +14,7 @@ user_pw: ""                       # vault this; only used when the account is cr
 sshpub_location: ""               # local path to a public key
 ssh_public_key: ""                # or inline public key content
 ssh_authorized_keys_exclusive: false
-sudo_nopasswd: false              # keep false; NOPASSWD violates least privilege
+sudo_nopasswd: true                # non-interactive sudo; works with classic sudo and sudo-rs alike
 sudo_timestamp_timeout: 15
 sudo_logfile: /var/log/sudo.log
 

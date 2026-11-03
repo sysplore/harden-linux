@@ -1,56 +1,20 @@
 ---
 - name: Bootstrap a Debian or Ubuntu server
   hosts: "{{ fleet_hosts | default('', true) | default(fleet_host | default('linux', true), true) }}"
-  gather_facts: false
+  gather_facts: true
   vars:
     user_pw_effective: >-
       {{ harden_user_password | default('', true)
          | default(user_pw | default('', true), true) }}
     ansible_become_password: >-
-      {{ target_become_password | default('', true)
+      {{ '' if sudo_nopasswd | bool else (
+         target_become_password | default('', true)
          | default(harden_user_password | default('', true), true)
-         | default(user_pw | default('', true), true) }}
+         | default(user_pw | default('', true), true)) }}
   remote_user: "{{ ansible_user | default(bootstrap_user | default('', true), true) | default(omit, true) }}"
   become: "{{ (ansible_user | default(bootstrap_user | default('', true), true) | default('', true)) != 'root' }}"
   any_errors_fatal: true
   pre_tasks:
-    - name: Detect a sudo binary that supports password escalation
-      ansible.builtin.shell: |
-        set -eu
-        for name in sudo sudo.ws; do
-          path=$(command -v "$name" 2>/dev/null) || continue
-          version=$("$path" --version 2>/dev/null | head -n1 || true)
-          case "$version" in
-            *sudo-rs*) continue ;;
-            *) printf '%s\n' "$path"; exit 0 ;;
-          esac
-        done
-        exit 3
-      become: false
-      register: sudo_binary_detect
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: Use the system sudo binary for privilege escalation
-      ansible.builtin.set_fact:
-        ansible_become_exe: "{{ sudo_binary_detect.stdout | trim }}"
-      become: false
-      when: sudo_binary_detect.rc == 0
-
-    - name: Report when only sudo-rs is available
-      ansible.builtin.fail:
-        msg: >-
-          No password-capable sudo binary was found (the default is sudo-rs,
-          whose prompt Ansible cannot drive). Install classic sudo
-          (apt install sudo) or grant the hardening user NOPASSWD in sudoers.
-      become: false
-      when: sudo_binary_detect.rc != 0
-
-    - name: Gather facts with the resolved sudo binary
-      ansible.builtin.setup:
-      become: true
-
     - name: Assert supported platform
       ansible.builtin.assert:
         that:

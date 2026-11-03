@@ -132,11 +132,12 @@ and `group_vars/ubuntu.yml` are loaded by group name.
 }
 ```
 
-For the sudo password, use a vaulted `host_vars/<host>.yml` with
-`ansible_become_password`, or a secret environment variable if your Semaphore
-version supports secret variables. The repository defaults to
-`sudo_nopasswd: false`; granting `NOPASSWD: ALL` to the automation account is a
-deliberate risk decision, not a default.
+The hardening user escalates non-interactively: the repository defaults to
+`sudo_nopasswd: true`, which is the only mechanism that works identically on
+every sudo implementation (classic sudo and sudo-rs both accept
+non-interactive escalation, while Ansible cannot drive sudo-rs's password
+prompt at all). The account itself is key-only, so NOPASSWD does not widen
+remote access.
 
 ## 3. Bootstrap
 
