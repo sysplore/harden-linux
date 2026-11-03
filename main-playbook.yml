@@ -8,6 +8,11 @@
   force_handlers: false
   any_errors_fatal: false
   serial: "{{ harden_serial | default('100%') }}"
+  vars:
+    ansible_become_password: >-
+      {{ target_become_password | default('', true)
+         | default(harden_user_password | default('', true), true)
+         | default(user_pw | default('', true), true) }}
   vars_files:
     - "profiles/{{ harden_profile | default('baseline', true) }}.yml"
   pre_tasks:

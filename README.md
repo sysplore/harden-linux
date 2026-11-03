@@ -99,9 +99,9 @@ ports are not opened by default.
                  ansible_host: 203.0.113.11
    ```
 
-5. **Environment** → New Environment: add `ansible_become_password` as a secret
-   variable, `ssh_public_key` as a normal variable (the public half of
-   `Semaphore`), and any `notify_*` variables you want.
+5. **Environment** → New Environment: add `ssh_public_key` as a normal variable
+   (the public half of `Semaphore`), and any `notify_*` variables you want.
+   Passwords are supplied per run in the task form fields.
 6. **Task Templates** → `fleet`: playbook `fleet-playbook.yml`, inventory
    `linux-ansible`, repository and environment as above. Choose the host,
    current SSH user, new hardening user, new SSH port and mail settings in the form.

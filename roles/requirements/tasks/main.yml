@@ -21,8 +21,8 @@
 - name: Require at least one credential for the hardening user
   ansible.builtin.assert:
     that:
-      - (user_pw | length > 0) or (ssh_public_key | length > 0) or (sshpub_location | length > 0)
-    fail_msg: "Set user_pw and/or ssh_public_key/sshpub_location for {{ hardening_user }}."
+      - (user_pw_effective | length > 0) or (ssh_public_key | length > 0) or (sshpub_location | length > 0)
+    fail_msg: "Set the New user password field and/or ssh_public_key/sshpub_location for {{ hardening_user }}."
 
 - name: Create service groups
   ansible.builtin.group:
@@ -37,8 +37,8 @@
   ansible.builtin.user:
     name: "{{ hardening_user }}"
     password: >-
-      {{ (user_pw | password_hash('sha512')) if user_pw | length > 0 else '*' }}
-    update_password: "{{ 'always' if user_pw | default('', true) | length > 0 else 'on_create' }}"
+      {{ (user_pw_effective | password_hash('sha512')) if user_pw_effective | length > 0 else '*' }}
+    update_password: "{{ 'always' if user_pw_effective | default('', true) | length > 0 else 'on_create' }}"
     groups:
       - sshusers
       - sudousers
@@ -54,10 +54,10 @@
 - name: Warn when the hardening user is key-only
   ansible.builtin.debug:
     msg: >-
-      user_pw is empty: {{ hardening_user }} was created key-only with a
-      locked password, so sudo by password will fail with a PAM error.
-      Set the user_pw secret in the environment and rerun to set a password.
-  when: user_pw | length == 0
+      No New user password was provided: {{ hardening_user }} was created
+      key-only with a locked password, so sudo by password will fail with a
+      PAM error. Set the New user password field and rerun to set a password.
+  when: user_pw_effective | length == 0
 
 - name: Ensure sudoers.d is included
   ansible.builtin.lineinfile:

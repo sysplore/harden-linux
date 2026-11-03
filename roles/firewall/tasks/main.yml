@@ -129,9 +129,12 @@
   notify: reload ufw
   when: psad_enabled | bool
 
-- name: Apply UFW rules before psad startup checks
-  ansible.builtin.meta: flush_handlers
-  when: psad_enabled | bool
+- name: Reload UFW before psad startup checks
+  ansible.builtin.command: ufw reload
+  changed_when: false
+  when:
+    - psad_enabled | bool
+    - not ansible_check_mode
 
 - name: Update psad signatures
   ansible.builtin.command: psad --sig-update

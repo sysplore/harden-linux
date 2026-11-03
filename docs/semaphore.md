@@ -63,11 +63,14 @@ The script creates these templates:
 - `maintenance-report` — Lynis and AIDE only
 - `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing
 
-The bootstrap creates one environment (`harden`) shared by both templates. The
-form's current SSH user/password and sudo password are used for the initial
-connection; the hardening user's managed password is stored as
-`ansible_become_password` and `user_pw` for fleet. The one-host environment split
-was removed.
+The bootstrap stores one environment (`harden`) holding the API token, the
+SSH public key and the inventory settings. Passwords are never stored in the
+environment: the task forms carry them per run — **Current SSH user**,
+**SSH password** and **Sudo password** for the initial single-host run, and
+**New user password** plus **Sudo password** for the new hardening user on
+every run. The requirements role sets the hardening user's password from the
+form; leaving the password fields blank creates a key-only user that cannot
+sudo by password.
 
 It does not create schedules or approvals; add those in the Semaphore UI. Use
 the **Target host** dropdown (or the **Limit** field) for the first run.

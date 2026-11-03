@@ -371,26 +371,6 @@ def read_private_key(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def load_or_create_become_password(value: str) -> str:
-    if value:
-        return value
-
-    path = Path(
-        env("SEMAPHORE_BECOME_PASSWORD_FILE", "~/.config/harden-linux/semaphore_become_password")
-    ).expanduser()
-    if path.is_file():
-        password = path.read_text(encoding="utf-8").strip()
-        if password:
-            return password
-
-    password = secrets.token_urlsafe(32)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(password + "\n", encoding="utf-8")
-    path.chmod(0o600)
-    print(f"Generated a managed become password and stored it in {path}", file=sys.stderr)
-    return password
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap a Semaphore project for harden-linux.")
     parser.add_argument("--dry-run", action="store_true", help="print the plan without calling the API")
@@ -419,9 +399,6 @@ def main() -> int:
     env_name = env("SEMAPHORE_ENV_NAME", "harden")
     bootstrap_login = env("SEMAPHORE_BOOTSTRAP_LOGIN", "root")
     bootstrap_password = env("SEMAPHORE_BOOTSTRAP_PASSWORD")
-    become_password = env("SEMAPHORE_BECOME_PASSWORD")
-    if not args.dry_run:
-        become_password = load_or_create_become_password(become_password)
 
     if not args.dry_run and (not base_url or not token):
         raise SystemExit("SEMAPHORE_URL and SEMAPHORE_API_TOKEN are required unless --dry-run is used.")
@@ -447,13 +424,7 @@ def main() -> int:
             print("inventory: linux-bootstrap (would ensure)")
         print(f"environment: {env_name} (would ensure)")
         print("environment vars: semaphore_url, semaphore_project_id, semaphore_inventory_id, semaphore_ssh_login")
-        if become_password:
-            print("environment secrets: semaphore_api_token, ansible_become_password, user_pw")
-        else:
-            print("become password: would generate and store a managed password")
-            print("environment secrets: semaphore_api_token, ansible_become_password, user_pw")
-        print(f"environment: {env_name}-one (would ensure)")
-        print("environment secrets: semaphore_api_token, user_pw")
+        print("environment secrets: semaphore_api_token")
 
     api = Semaphore(base_url, token) if not args.dry_run else None
     assert api is not None or args.dry_run
@@ -516,23 +487,6 @@ def main() -> int:
         ) if api else {"id": 0, "name": "linux-bootstrap"}
 
     secrets = []
-    if become_password:
-        secrets.extend(
-            [
-                {
-                    "name": "ansible_become_password",
-                    "secret": become_password,
-                    "type": "var",
-                    "operation": "create",
-                },
-                {
-                    "name": "user_pw",
-                    "secret": become_password,
-                    "type": "var",
-                    "operation": "create",
-                },
-            ]
-        )
 
     runner_api_token = env("SEMAPHORE_RUNNER_API_TOKEN") or token
     if runner_api_token:
@@ -584,6 +538,13 @@ def main() -> int:
             "title": "New hardening username",
             "description": "Account to create; blank = ansible.",
             "type": "",
+            "required": False,
+        },
+        {
+            "name": "harden_user_password",
+            "title": "New user password",
+            "description": "Password for the new user. Blank = key-only (sudo by password will not work).",
+            "type": "secret",
             "required": False,
         },
         {
@@ -759,6 +720,13 @@ def main() -> int:
             "title": "Current SSH user",
             "description": "User used to connect now; blank = the inventory credential user.",
             "type": "",
+            "required": False,
+        },
+        {
+            "name": "target_become_password",
+            "title": "Sudo password",
+            "description": "The hardening user's sudo password. Blank = the New user password field.",
+            "type": "secret",
             "required": False,
         },
         {
