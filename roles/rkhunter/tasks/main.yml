@@ -80,8 +80,10 @@
   ansible.builtin.command: rkhunter --update
   changed_when: false
   failed_when: false
+  register: rkhunter_sig_update
   retries: 2
   delay: 5
+  until: rkhunter_sig_update.rc == 0
 
 - name: Refresh the rkhunter file properties database
   ansible.builtin.command: rkhunter --propupd

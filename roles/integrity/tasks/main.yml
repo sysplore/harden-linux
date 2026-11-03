@@ -10,13 +10,21 @@
     - /etc/aide/aide.conf.d
     - /var/log/aide
 
+- name: Remove the invalid AIDE include directive
+  ansible.builtin.lineinfile:
+    path: "{{ aide_config }}"
+    regexp: '^!include /etc/aide/aide\.conf\.d'
+    state: absent
+    backup: true
+
 - name: Ensure AIDE includes its configuration directory
   ansible.builtin.lineinfile:
     path: "{{ aide_config }}"
-    regexp: '^!include /etc/aide/aide.conf.d'
-    line: '!include /etc/aide/aide.conf.d/'
+    regexp: '^@@include /etc/aide/aide\.conf\.d'
+    line: '@@include /etc/aide/aide.conf.d ^[^.#].*\.conf$'
     state: present
     backup: true
+
 
 - name: Monitor security-critical paths with AIDE
   ansible.builtin.copy:
@@ -51,7 +59,10 @@
 
 - name: Warn when AIDE initialization failed
   ansible.builtin.debug:
-    msg: "WARNING: AIDE initialization failed. Run `aideinit -y -f` manually."
+    msg: >-
+      WARNING: AIDE initialization failed (rc={{ aide_init.rc | default('n/a') }}).
+      stderr: {{ aide_init.stderr | default('') | trim }}
+      Run `aideinit -y -f` manually after fixing the cause.
   when:
     - not aide_db.stat.exists
     - aide_init is defined

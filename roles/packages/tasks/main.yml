@@ -49,8 +49,10 @@
     state: present
   environment:
     DEBIAN_FRONTEND: noninteractive
+  register: packages_install
   retries: 3
   delay: 5
+  until: packages_install is succeeded
 
 - name: Configure apt-listchanges to avoid interactive prompts
   ansible.builtin.copy:
