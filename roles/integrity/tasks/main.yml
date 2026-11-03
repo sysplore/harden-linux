@@ -8,7 +8,14 @@
     mode: '0755'
   loop:
     - /etc/aide/aide.conf.d
-    - /var/log/aide
+
+- name: Ensure the AIDE log directory is writable by the aide user
+  ansible.builtin.file:
+    path: /var/log/aide
+    state: directory
+    owner: aide
+    group: adm
+    mode: '0750'
 
 - name: Remove the invalid AIDE include directive
   ansible.builtin.lineinfile:

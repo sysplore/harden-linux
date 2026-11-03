@@ -81,12 +81,18 @@
     set -o pipefail
     umask 077
     report="$(mktemp --suffix=.html {{ lynis_report_dir }}/lynis-XXXXXX)"
-    lynis audit system 2>&1 | ansi2html -l > "$report" || true
+    audit_log="$(mktemp {{ lynis_report_dir }}/lynis-audit-XXXXXX.log)"
+    lynis audit system > "$audit_log" 2>&1 || true
+    ansi2html -l < "$audit_log" > "$report" || true
     if [ ! -s "$report" ]; then
       rm -f "$report"
       echo "empty"
+      echo "--- lynis output tail ---"
+      tail -n 10 "$audit_log" || true
+      rm -f "$audit_log"
       exit 0
     fi
+    rm -f "$audit_log"
     {% if (lynis_notify | bool) and (notify_backend_effective | default('none') == 'smtp') and (mail_enabled | default(false) | bool) %}
     /usr/bin/mail -A "$report" -s "Lynis report: $(hostname)" "{{ mail_to }}" || true
     {% elif (lynis_notify | bool) and (notify_enabled | default(false) | bool) %}

@@ -201,6 +201,7 @@
         - semaphore_inventory_id | default('', true) | length > 0
         - (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
           or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
+      become: false
       tags: [register]
 
     - name: Store the hardening user password for future runs
@@ -226,6 +227,7 @@
         - user_pw_effective | default('', true) | length > 0
         - (lookup('env', 'semaphore_api_token') | default('', true) | length > 0)
           or (lookup('env', 'SEMAPHORE_API_TOKEN') | default('', true) | length > 0)
+      become: false
       tags: [register]
 
     - name: Show the inventory registration result
