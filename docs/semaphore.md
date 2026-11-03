@@ -185,18 +185,26 @@ mail without sending a test message. `open_inbound_tcp` is passed to the
 firewall role.
 
 `harden-one` remains the single-server path: IP, current user, password and all
-common settings in one form. It registers a server automatically after a
-successful hardening run, so a server normally has to be entered only once. It
-registers the target under the IP or hostname you entered; use `add-host` if you
-want a separate inventory name. The password is used for the first bootstrap and
-is not stored; after hardening the inventory keeps the current SSH user and the
-Semaphore key. The new hardening user is created and receives the key, but it is
-not automatically made the inventory user because a key-only account may not
-have passwordless sudo. Set **Current SSH user** to that account once it has
-sudo access, or keep using an account that works. `add-host` assumes the host
-already accepts the key, so use `harden-one` or `bootstrap` for a fresh server.
-Semaphore 2.16 supports one SSH credential per inventory, so per-host passwords
-would require separate inventories.
+common settings in one form. The initial bootstrap can use `root` as the current
+user; the new hardening user receives the SSH key and the managed password.
+After a successful run the inventory stores the hardening user and the effective
+port, so `fleet` can run as that user and use the managed password for sudo.
+Set **Current SSH user** only when you deliberately want a different connection
+account for that run. It registers the target under the IP or hostname you
+entered; use `add-host` if you want a separate inventory name. The initial
+password is used for the first bootstrap and is not stored. `add-host` assumes
+the host already accepts the key, so use `harden-one` or `bootstrap` for a fresh
+server. Semaphore 2.16 supports one SSH credential per inventory, so per-host
+passwords would require separate inventories.
+
+The bootstrap generates or reuses a managed password for the hardening user and
+stores it in Semaphore as `ansible_become_password` and `user_pw`. The
+requirements role sets that password on the hardening user, so fleet can sudo as
+the hardening user without NOPASSWD. Set `SEMAPHORE_BECOME_PASSWORD` to pin a
+specific password; otherwise it is generated once in
+`SEMAPHORE_BECOME_PASSWORD_FILE` (default
+`~/.config/harden-linux/semaphore_become_password`, mode 0600). Keep that file
+or set the variable if you rerun the bootstrap from another machine.
 
 This needs an API token with project write access. The bootstrap stores
 `SEMAPHORE_RUNNER_API_TOKEN` (or `SEMAPHORE_API_TOKEN` when the former is

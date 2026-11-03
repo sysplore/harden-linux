@@ -39,7 +39,7 @@
     password: >-
       {{ (user_pw | password_hash('yescrypt')) if (user_pw | length > 0 and pam_yescrypt | default(true) | bool)
          else ((user_pw | password_hash('sha512')) if user_pw | length > 0 else '*') }}
-    update_password: on_create
+    update_password: "{{ 'always' if user_pw | default('', true) | length > 0 else 'on_create' }}"
     groups:
       - sshusers
       - sudousers

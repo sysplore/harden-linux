@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import stat
 import sys
 import urllib.error
@@ -370,6 +371,26 @@ def read_private_key(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def load_or_create_become_password(value: str) -> str:
+    if value:
+        return value
+
+    path = Path(
+        env("SEMAPHORE_BECOME_PASSWORD_FILE", "~/.config/harden-linux/semaphore_become_password")
+    ).expanduser()
+    if path.is_file():
+        password = path.read_text(encoding="utf-8").strip()
+        if password:
+            return password
+
+    password = secrets.token_urlsafe(32)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(password + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    print(f"Generated a managed become password and stored it in {path}", file=sys.stderr)
+    return password
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap a Semaphore project for harden-linux.")
     parser.add_argument("--dry-run", action="store_true", help="print the plan without calling the API")
@@ -399,6 +420,8 @@ def main() -> int:
     bootstrap_login = env("SEMAPHORE_BOOTSTRAP_LOGIN", "root")
     bootstrap_password = env("SEMAPHORE_BOOTSTRAP_PASSWORD")
     become_password = env("SEMAPHORE_BECOME_PASSWORD")
+    if not args.dry_run:
+        become_password = load_or_create_become_password(become_password)
 
     if not args.dry_run and (not base_url or not token):
         raise SystemExit("SEMAPHORE_URL and SEMAPHORE_API_TOKEN are required unless --dry-run is used.")
@@ -424,7 +447,11 @@ def main() -> int:
             print("inventory: linux-bootstrap (would ensure)")
         print(f"environment: {env_name} (would ensure)")
         print("environment vars: semaphore_url, semaphore_project_id, semaphore_inventory_id, semaphore_ssh_login")
-        print("environment secret: semaphore_api_token (would ensure)")
+        if become_password:
+            print("environment secrets: semaphore_api_token, ansible_become_password, user_pw")
+        else:
+            print("become password: would generate and store a managed password")
+            print("environment secrets: semaphore_api_token, ansible_become_password, user_pw")
 
     api = Semaphore(base_url, token) if not args.dry_run else None
     assert api is not None or args.dry_run
@@ -488,16 +515,22 @@ def main() -> int:
 
     secrets = []
     if become_password:
-        secrets.append(
-            {
-                "name": "ansible_become_password",
-                "secret": become_password,
-                "type": "var",
-                "operation": "create",
-            }
+        secrets.extend(
+            [
+                {
+                    "name": "ansible_become_password",
+                    "secret": become_password,
+                    "type": "var",
+                    "operation": "create",
+                },
+                {
+                    "name": "user_pw",
+                    "secret": become_password,
+                    "type": "var",
+                    "operation": "create",
+                },
+            ]
         )
-    else:
-        print("WARNING: SEMAPHORE_BECOME_PASSWORD is not set; tasks need passwordless sudo or a become secret.", file=sys.stderr)
 
     runner_api_token = env("SEMAPHORE_RUNNER_API_TOKEN") or token
     if runner_api_token:

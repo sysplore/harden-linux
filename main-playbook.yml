@@ -169,8 +169,7 @@
                else ('debian' if 'debian' in (hostvars[inventory_hostname].group_names | default([]))
                      else 'ubuntu') }}"
           - "--user"
-          - "{{ ansible_user | default('', true)
-               | default(harden_user | default('', true), true)
+          - "{{ harden_user | default('', true)
                | default(user_name | default('', true), true)
                | default(semaphore_ssh_login | default('', true), true)
                | default('ansible', true) }}"
