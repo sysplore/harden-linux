@@ -452,6 +452,8 @@ def main() -> int:
         else:
             print("become password: would generate and store a managed password")
             print("environment secrets: semaphore_api_token, ansible_become_password, user_pw")
+        print(f"environment: {env_name}-one (would ensure)")
+        print("environment secrets: semaphore_api_token, user_pw")
 
     api = Semaphore(base_url, token) if not args.dry_run else None
     assert api is not None or args.dry_run
@@ -558,8 +560,16 @@ def main() -> int:
     if ssh_public_key:
         environment_extra["ssh_public_key"] = ssh_public_key
     environment = ensure_environment(api, project_id, env_name, secrets, environment_extra, args.dry_run) if api else {"id": 0, "name": env_name}
+    one_host_env_name = f"{env_name}-one"
+    one_host_secrets = [secret for secret in secrets if secret["name"] != "ansible_become_password"]
+    one_host_environment = (
+        ensure_environment(api, project_id, one_host_env_name, one_host_secrets, environment_extra, args.dry_run)
+        if api
+        else {"id": 0, "name": one_host_env_name}
+    )
 
     env_id = int(environment.get("id") or 1)
+    one_host_env_id = int(one_host_environment.get("id") or 1)
     inv_id = int(inventory.get("id") or 1)
     repo_id = int(repo.get("id") or 1)
 
@@ -817,6 +827,7 @@ def main() -> int:
             print("template: bootstrap (skipped: set SEMAPHORE_BOOTSTRAP_PASSWORD to create it)")
             continue
         template_inventory = int(bootstrap_inventory["id"] or 1) if name == "bootstrap" else inv_id
+        template_environment = one_host_env_id if name == "harden-one" else env_id
         if api:
             ensure_template(
                 api,
@@ -824,7 +835,7 @@ def main() -> int:
                 name,
                 template_inventory,
                 repo_id,
-                env_id,
+                template_environment,
                 playbook,
                 arguments,
                 branch,

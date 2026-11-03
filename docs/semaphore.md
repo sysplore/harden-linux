@@ -63,6 +63,12 @@ The script creates these templates:
 - `maintenance-report` — Lynis and AIDE only
 - `bootstrap` — optional fleet bootstrap when the `ansible` user/key is missing
 
+The bootstrap creates two environments: `harden` for fleet and managed sudo,
+and `harden-one` for the single-host path. `harden-one` deliberately omits
+`ansible_become_password`, so the form's target sudo password is used for the
+initial Ubuntu bootstrap; the hardening user's managed password is still stored
+as `user_pw` and used for fleet.
+
 It does not create schedules or approvals; add those in the Semaphore UI. Use
 the **Target host** dropdown (or the **Limit** field) for the first run.
 
